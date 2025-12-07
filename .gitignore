@@ -1,0 +1,28 @@
+# --- Python (コンパイル済みファイルやキャッシュ) ---
+__pycache__/
+*.py[cod]
+*$py.class
+
+# --- 仮想環境 (ライブラリの実体はコミットしない) ---
+venv/
+.venv/
+env/
+
+# --- 環境変数・秘密情報 (【最重要】絶対コミットしない！) ---
+.env
+.env.local
+config.py
+
+# --- Docker (ローカルデータやログ) ---
+# docker-composeで volumes: - ./mysql_data:/var/lib/mysql とした場合用
+mysql_data/
+postgres_data/
+*.log
+
+# --- IDE / エディタ設定 (個人の設定は共有しない) ---
+.vscode/
+.idea/
+*.swp
+
+# --- macOS (Mac特有のゴミファイル) ---
+.DS_Store

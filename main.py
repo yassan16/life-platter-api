@@ -1,15 +1,26 @@
 import os
 from fastapi import FastAPI
+# 各機能（features）で作ったルーターを読み込む
+# ※名前が被らないように "as" で別名を付けるのがコツです
+from app.features.cooking.router import router as cooking_router
 from sqlalchemy import create_engine, text
 
 app = FastAPI()
 
-# 1. 環境変数の取得
+# 環境変数の取得
 # docker-compose.yml の environment: で設定した "DATABASE_URL" を読み込みます
 # 中身: mysql+pymysql://user:password@db/life_platter_db
 DATABASE_URL = os.getenv("DATABASE_URL")
 
-# 2. ルートパスへのアクセス (Hello World)
+# --- ルーターの統合 ---
+# 料理機能: http://localhost/cooking/xxxxx
+app.include_router(
+    cooking_router,
+    prefix="/cooking",  # URLの頭に /cooking を付ける
+    tags=["Cooking"]    # Swagger UI でのグループ名
+)
+
+# ルートパスへのアクセス (Hello World)
 @app.get("/")
 def read_root():
     """
@@ -17,7 +28,7 @@ def read_root():
     """
     return {"message": "Hello, FastAPI is running!"}
 
-# 3. DB接続テスト用のパス
+# DB接続テスト用のパス
 @app.get("/db-check")
 def db_check():
     """
