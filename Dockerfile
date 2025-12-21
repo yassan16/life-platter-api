@@ -8,7 +8,7 @@ ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 
 # 3. 作業ディレクトリの作成（ここが質問の箇所です）
-WORKDIR /app
+WORKDIR /src
 
 # 4. 依存ライブラリのインストール
 # 先にrequirements.txtだけをコピー

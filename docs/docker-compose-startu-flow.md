@@ -9,16 +9,20 @@
 ### 1-1. 前提環境 (Mac + Colima)
 Docker Desktopの代わりにColimaを使用する場合、DB安定化のためにリソースを確保して起動します。
 
-
 ### 1-2. ディレクトリ構成
-プロジェクトルート (\`food-app-backend\`) を作成し、以下の構成にします。
+プロジェクトルート (`life_platter-api`) の構成は以下の通りです。
 
 ```text
-food-app-backend/
+life_platter-api/
 ├── nginx/
 │   └── default.conf     # Webサーバー設定
-├── app/                 # 機能ベース構成への移行を見据えた配置
-│   └── main.py          # アプリ本体
+├── app/                 # 機能ベース構成
+│   ├── core/
+│   │   └── database.py  # SQLAlchemy設定、セッション管理
+│   └── features/        # 機能単位のモジュール構成
+│       └── cooking/
+│           └── router.py  # 料理関連エンドポイント
+├── main.py              # FastAPIアプリのエントリーポイント
 ├── requirements.txt     # ライブラリ一覧
 ├── Dockerfile           # FastAPI用コンテナ定義
 └── docker-compose.yml   # 全体の構成定義
@@ -33,7 +37,7 @@ FROM python:3.12-slim
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 
-WORKDIR /app
+WORKDIR /src
 
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
@@ -41,7 +45,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 
 # Nginx経由のため8000番で待機
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
 ```
 
 #### docker-compose.yml
@@ -51,30 +55,30 @@ version: '3.8'
 services:
   db:
     image: mysql:8.0
-    container_name: food_app_db
+    container_name: life_platter_db
+    ports:
+      - "3306:3306"
     environment:
-      MYSQL_DATABASE: food_db
+      MYSQL_DATABASE: life_platter_db
       MYSQL_USER: user
       MYSQL_PASSWORD: password
       MYSQL_ROOT_PASSWORD: root_password
-    ports:
-      - "3306:3306"
     volumes:
       - db_data:/var/lib/mysql
 
   app:
     build: .
-    container_name: food_app_server
+    container_name: life_platter_app
     volumes:
       - .:/app
     environment:
-      DATABASE_URL: mysql+pymysql://user:password@db/food_db
+      DATABASE_URL: mysql+pymysql://user:password@db/life_platter_db
     depends_on:
       - db
 
   nginx:
     image: nginx:latest
-    container_name: food_app_nginx
+    container_name: life_platter_nginx
     ports:
       - "80:80"
     volumes:
@@ -85,9 +89,38 @@ services:
 volumes:
   db_data:
 ```
+
 ---
 
-## 🌊 2. 起動シーケンス詳細フロー
+## 🏗 2. アーキテクチャ
+
+### データベース接続フロー
+1. `docker-compose.yml` の `environment` で `DATABASE_URL` を設定
+2. `database.py` が `os.getenv("DATABASE_URL")` で環境変数を取得
+3. SQLAlchemy の `create_engine()` でコネクションプールを作成
+4. `get_db()` 関数で各リクエストごとにセッションを提供
+
+**重要**: ホスト名は `db` (Dockerサービス名) を使用。`localhost` ではない。
+
+### 接続文字列
+```
+mysql+pymysql://user:password@db/life_platter_db
+```
+- ユーザー名: `user`
+- パスワード: `password`
+- ホスト: `db` (docker-composeサービス名)
+- データベース名: `life_platter_db`
+
+### リクエストフロー
+```
+ブラウザ → Nginx:80 → FastAPI:8000 → MySQL:3306
+```
+
+Nginxがリバースプロキシとして動作し、外部からのHTTPリクエストをFastAPIアプリケーションに転送します。FastAPIは必要に応じてMySQLデータベースにアクセスします。
+
+---
+
+## 🌊 3. 起動シーケンス詳細フロー
 
 コマンド実行からリクエスト受付開始までの内部処理フローです。
 
@@ -95,6 +128,11 @@ volumes:
 ```bash
 docker compose up --build
 ```
+
+### Docker起動順序
+1. MySQL コンテナ起動 (3306ポート待機)
+2. FastAPI コンテナ起動 (`depends_on: db`)
+3. Nginx コンテナ起動 (`depends_on: app`)
 
 ### シーケンス図
 
@@ -107,7 +145,7 @@ sequenceDiagram
     participant Nginx as 🌐 Nginx
 
     User->>Docker: docker compose up
-    
+
     rect rgb(240, 248, 255)
         note right of Docker: 【Phase 1: 準備】
         Docker->>Docker: ネットワーク作成
@@ -166,11 +204,10 @@ sequenceDiagram
 
 ---
 
-## ✅ 3. 動作確認
+## ✅ 4. 動作確認
 
 ブラウザで以下のURLにアクセスして確認します。
 
 * **API稼働確認:** [http://localhost/](http://localhost/)
 * **DB接続テスト:** [http://localhost/db-check](http://localhost/db-check)
 * **APIドキュメント:** [http://localhost/docs](http://localhost/docs)
-EOF
