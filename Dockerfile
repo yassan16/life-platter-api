@@ -21,4 +21,4 @@ COPY . .
 
 # 6. アプリケーションの起動
 # ホスト0.0.0.0で公開し、コード変更を検知して再起動(--reload)
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]

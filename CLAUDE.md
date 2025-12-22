@@ -12,14 +12,7 @@ life_platter-api
 - Webサーバー: Nginx (リバースプロキシ)
 
 ## HOW（基本コマンド）
-- 起動: `docker compose up -d`
-- ログ確認: `docker compose logs -f app`
-- 停止: `docker compose down`
-- 再ビルド: `docker compose up -d --build`
-- DB接続テスト: ブラウザで `http://localhost/db-check` にアクセス
-- API仕様確認: ブラウザで `http://localhost/docs` にアクセス (Swagger UI)
-- マイグレーション作成: `docker compose exec app alembic revision --autogenerate -m "メッセージ"`
-- マイグレーション実行: `docker compose exec app alembic upgrade head`
+基本的な操作コマンドは `docs/commands.md` にまとめています。
 
 ## プロジェクト構成
 ```
@@ -76,6 +69,11 @@ life_platter-api/
 
 ## 詳細ドキュメント
 タスクに応じて以下を参照：
+- 基本コマンド一覧: `docs/commands.md`
+  - Docker操作（起動・停止・ログ確認）
+  - API動作確認（Swagger UI、DB接続テスト）
+  - マイグレーション操作（Alembic）
+  - データベース直接操作
 - Docker起動フロー・アーキテクチャ詳細: `docs/docker-compose-startu-flow.md`
   - データベース接続フロー
   - リクエストフロー (Nginx → FastAPI → MySQL)
