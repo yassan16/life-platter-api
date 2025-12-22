@@ -74,6 +74,11 @@ life_platter-api/
   - API動作確認（Swagger UI、DB接続テスト）
   - マイグレーション操作（Alembic）
   - データベース直接操作
+- Alembicマイグレーションセットアップ: `docs/migration-guide.md`
+  - パッケージインストールから初期化まで
+  - env.py・database.pyの非同期対応設定
+  - モデル作成とマイグレーション実行フロー
+  - トラブルシューティング
 - Docker起動フロー・アーキテクチャ詳細: `docs/docker-compose-startu-flow.md`
   - データベース接続フロー
   - リクエストフロー (Nginx → FastAPI → MySQL)
