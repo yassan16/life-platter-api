@@ -12,9 +12,11 @@
 - チーム開発でのスキーマ変更を安全に共有する
 
 ### 前提条件
-- Docker環境が構築済み
+- Colima + Docker 環境が構築済み（Mac環境）
 - MySQL 8.0 + FastAPI + Nginx の構成
 - SQLAlchemy がインストール済み
+
+> **Note**: Colimaを使用している場合も、`docker compose` コマンドはそのまま動作します。
 
 ### 接続方式の設計
 
@@ -76,6 +78,8 @@ docker compose exec app pip list | grep -E "alembic|aiomysql"
 docker compose exec app alembic init migrations
 ```
 
+> **Note**: コンテナ内のワーキングディレクトリは `/app` です。生成されたファイルはボリュームマウントにより、ホスト側のプロジェクトルートにも反映されます。
+
 ### 2-2. 生成されるファイル構成
 
 ```
@@ -103,7 +107,11 @@ life_platter-api/
 
 ### 3-1. sqlalchemy.url をコメントアウト
 
-`alembic.ini` を編集し、データベースURLの行をコメントアウトします（環境変数から取得するため）。
+`alembic.ini` を編集し、データベースURLの行をコメントアウトします。
+
+**理由:**
+- **セキュリティ**: パスワードを平文でファイルに保存しない
+- **柔軟性**: 環境変数から取得することで、環境ごとに異なる接続先を使用可能
 
 **変更前:**
 ```ini
@@ -131,6 +139,7 @@ script_location = migrations
 
 ```python
 import os
+import sys
 from logging.config import fileConfig
 
 from sqlalchemy import pool
@@ -139,7 +148,7 @@ from sqlalchemy import engine_from_config
 from alembic import context
 
 # === 追加: プロジェクトルートをパスに追加 ===
-import sys
+# Dockerコンテナ内では /app がルート、ローカルではプロジェクトルート
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # === 追加: database.py から Base をインポート ===
@@ -152,7 +161,10 @@ from app.features import *
 config = context.config
 
 # === 追加: 環境変数から DATABASE_URL を取得 ===
-config.set_main_option('sqlalchemy.url', os.getenv('DATABASE_URL'))
+database_url = os.getenv('DATABASE_URL')
+if not database_url:
+    raise ValueError("DATABASE_URL environment variable is not set")
+config.set_main_option('sqlalchemy.url', database_url)
 
 # ロギング設定
 if config.config_file_name is not None:
@@ -221,17 +233,24 @@ else:
 ```python
 import os
 from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker, declarative_base
+from sqlalchemy.orm import sessionmaker, DeclarativeBase
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
+
+
+# === Base クラス（全モデルの基底） ===
+class Base(DeclarativeBase):
+    """SQLAlchemy 2.0 スタイルの基底クラス"""
+    pass
+
 
 # === 接続URL ===
 DATABASE_URL = os.getenv("DATABASE_URL")  # 同期用: mysql+pymysql://...
 ASYNC_DATABASE_URL = os.getenv("ASYNC_DATABASE_URL")  # 非同期用: mysql+aiomysql://...
 
-# === Base クラス（全モデルの基底） ===
-Base = declarative_base()
-
 # === 同期エンジン（Alembicマイグレーション用） ===
+if not DATABASE_URL:
+    raise ValueError("DATABASE_URL environment variable is not set")
+
 engine = create_engine(
     DATABASE_URL,
     echo=True,
@@ -242,18 +261,22 @@ engine = create_engine(
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 # === 非同期エンジン（アプリケーション実行用） ===
-async_engine = create_async_engine(
-    ASYNC_DATABASE_URL,
-    echo=True,
-    pool_pre_ping=True,
-)
+# 非同期エンジンは ASYNC_DATABASE_URL が設定されている場合のみ初期化
+async_engine = None
+AsyncSessionLocal = None
 
-# 非同期セッションファクトリ
-AsyncSessionLocal = async_sessionmaker(
-    async_engine,
-    class_=AsyncSession,
-    expire_on_commit=False,
-)
+if ASYNC_DATABASE_URL:
+    async_engine = create_async_engine(
+        ASYNC_DATABASE_URL,
+        echo=True,
+        pool_pre_ping=True,
+    )
+
+    AsyncSessionLocal = async_sessionmaker(
+        async_engine,
+        class_=AsyncSession,
+        expire_on_commit=False,
+    )
 
 
 # === 依存性注入（同期） ===
@@ -269,6 +292,8 @@ def get_db():
 # === 依存性注入（非同期） ===
 async def get_async_db():
     """非同期セッションを提供（非同期エンドポイント用）"""
+    if AsyncSessionLocal is None:
+        raise RuntimeError("ASYNC_DATABASE_URL is not configured")
     async with AsyncSessionLocal() as session:
         try:
             yield session
@@ -292,27 +317,52 @@ services:
 
 ### 6-1. モデルファイルの作成例
 
-**`app/features/cooking/models.py`**
+**`app/features/users/models.py`**
 
 ```python
-from sqlalchemy import Column, Integer, String, DateTime, Text
+import uuid
+from enum import Enum as PyEnum
+
+from sqlalchemy import Column, String, DateTime, Enum
+from sqlalchemy.dialects.mysql import CHAR
 from sqlalchemy.sql import func
+
 from app.core.database import Base
 
 
-class Cooking(Base):
-    """料理テーブル"""
-    __tablename__ = "cookings"
+class UserStatus(PyEnum):
+    """ユーザーステータス"""
+    active = "active"           # 通常
+    provisional = "provisional" # 仮登録
+    banned = "banned"           # 凍結
 
-    id = Column(Integer, primary_key=True, index=True)
-    name = Column(String(255), nullable=False, comment="料理名")
-    category = Column(String(100), comment="カテゴリ")
-    description = Column(Text, comment="説明")
+
+class User(Base):
+    """ユーザーテーブル"""
+    __tablename__ = "users"
+
+    id = Column(CHAR(36), primary_key=True, default=lambda: str(uuid.uuid4()), comment="主キー（UUID）")
+    username = Column(String(100), nullable=False, comment="表示名（ニックネーム）")
+    email = Column(String(255), nullable=False, unique=True, index=True, comment="メールアドレス（ログインID）")
+    email_verified_at = Column(DateTime, nullable=True, comment="メール確認完了日時")
+    password_hash = Column(String(255), nullable=False, comment="ハッシュ化されたパスワード")
+    status = Column(Enum(UserStatus), nullable=False, default=UserStatus.provisional, comment="ステータス")
+    last_login_at = Column(DateTime, nullable=True, comment="最終ログイン日時")
     created_at = Column(DateTime, server_default=func.now(), comment="作成日時")
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now(), comment="更新日時")
+    deleted_at = Column(DateTime, nullable=True, comment="削除日時（論理削除）")
 ```
 
-### 6-2. モデルのインポート集約
+### 6-2. モデル定義のポイント
+
+| 項目 | 説明 |
+|------|------|
+| **UUID** | `CHAR(36)`で文字列保存。`uuid.uuid4()`で自動生成。連番より推測されにくい |
+| **Enum** | Python Enumクラスを定義し、SQLAlchemyの`Enum`カラムで使用 |
+| **論理削除** | `deleted_at`がNULLなら有効ユーザー。物理削除せずに履歴を保持 |
+| **email** | `unique=True`でユニーク制約、`index=True`で検索高速化 |
+
+### 6-3. モデルのインポート集約
 
 **`app/features/__init__.py`**
 
@@ -322,10 +372,10 @@ class Cooking(Base):
 Alembicの autogenerate がモデルを検出するために必要
 """
 
-from app.features.cooking.models import Cooking
+from app.features.users.models import User
 
 # 新しいモデルを追加したら、ここにもインポートを追加する
-# from app.features.users.models import User
+# from app.features.cooking.models import Cooking
 # from app.features.ingredients.models import Ingredient
 ```
 
@@ -337,12 +387,12 @@ from app.features.cooking.models import Cooking
 
 ```bash
 # 自動生成（モデルの変更を検出）
-docker compose exec app alembic revision --autogenerate -m "create cookings table"
+docker compose exec app alembic revision --autogenerate -m "create users table"
 ```
 
 生成されるファイル:
 ```
-migrations/versions/xxxxxxxxxxxx_create_cookings_table.py
+migrations/versions/xxxxxxxxxxxx_create_users_table.py
 ```
 
 ### 7-2. 生成されたファイルの確認
@@ -352,14 +402,18 @@ migrations/versions/xxxxxxxxxxxx_create_cookings_table.py
 ```python
 def upgrade() -> None:
     op.create_table(
-        'cookings',
-        sa.Column('id', sa.Integer(), nullable=False),
-        sa.Column('name', sa.String(length=255), nullable=False),
+        'users',
+        sa.Column('id', sa.CHAR(length=36), nullable=False),
+        sa.Column('username', sa.String(length=100), nullable=False),
+        sa.Column('email', sa.String(length=255), nullable=False),
+        sa.Column('status', sa.Enum('active', 'provisional', 'banned', name='userstatus'), nullable=False),
         # ...
     )
+    op.create_index('ix_users_email', 'users', ['email'], unique=True)
 
 def downgrade() -> None:
-    op.drop_table('cookings')
+    op.drop_index('ix_users_email', table_name='users')
+    op.drop_table('users')
 ```
 
 ### 7-3. マイグレーションの実行
@@ -433,15 +487,21 @@ docker compose exec app alembic upgrade head --sql > migration.sql
 ```sql
 -- Running upgrade  -> a1b2c3d4e5f6
 
-CREATE TABLE cookings (
-    id INTEGER NOT NULL AUTO_INCREMENT,
-    name VARCHAR(255) NOT NULL COMMENT '料理名',
-    category VARCHAR(100) COMMENT 'カテゴリ',
-    description TEXT COMMENT '説明',
+CREATE TABLE users (
+    id CHAR(36) NOT NULL COMMENT '主キー（UUID）',
+    username VARCHAR(100) NOT NULL COMMENT '表示名（ニックネーム）',
+    email VARCHAR(255) NOT NULL COMMENT 'メールアドレス（ログインID）',
+    email_verified_at DATETIME COMMENT 'メール確認完了日時',
+    password_hash VARCHAR(255) NOT NULL COMMENT 'ハッシュ化されたパスワード',
+    status ENUM('active','provisional','banned') COMMENT 'ステータス',
+    last_login_at DATETIME COMMENT '最終ログイン日時',
     created_at DATETIME DEFAULT now() COMMENT '作成日時',
     updated_at DATETIME DEFAULT now() COMMENT '更新日時',
+    deleted_at DATETIME COMMENT '削除日時（論理削除）',
     PRIMARY KEY (id)
 );
+
+CREATE UNIQUE INDEX ix_users_email ON users (email);
 
 INSERT INTO alembic_version (version_num) VALUES ('a1b2c3d4e5f6');
 ```
@@ -454,6 +514,8 @@ INSERT INTO alembic_version (version_num) VALUES ('a1b2c3d4e5f6');
 ---
 
 ## マイグレーションフロー図
+
+> **前提**: STEP 1〜5 が完了していること（パッケージインストール、Alembic初期化、設定完了）
 
 ```mermaid
 flowchart TD
@@ -508,6 +570,7 @@ docker compose exec app alembic stamp head
 **対処**: `migrations/env.py` の先頭で以下を確認
 
 ```python
+import os
 import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 ```
@@ -521,7 +584,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 **対処**: `app/features/__init__.py` にインポートを追加
 
 ```python
-from app.features.cooking.models import Cooking
+from app.features.users.models import User
 from app.features.new_feature.models import NewModel  # 追加
 ```
 
