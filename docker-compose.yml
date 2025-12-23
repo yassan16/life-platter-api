@@ -21,7 +21,7 @@ services:
     container_name: life_platter_app
     # 【変更点】ports: "8000:8000" を削除（外部から直接アクセスさせないため）
     volumes:
-      - .:/app
+      - .:/src
     environment:
       DATABASE_URL: mysql+pymysql://user:password@db/life_platter_db
     depends_on:

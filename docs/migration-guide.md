@@ -78,7 +78,7 @@ docker compose exec app pip list | grep -E "alembic|aiomysql"
 docker compose exec app alembic init migrations
 ```
 
-> **Note**: コンテナ内のワーキングディレクトリは `/app` です。生成されたファイルはボリュームマウントにより、ホスト側のプロジェクトルートにも反映されます。
+> **Note**: コンテナ内のワーキングディレクトリは `/src` です。生成されたファイルはボリュームマウントにより、ホスト側のプロジェクトルートにも反映されます。
 
 ### 2-2. 生成されるファイル構成
 
@@ -148,7 +148,7 @@ from sqlalchemy import engine_from_config
 from alembic import context
 
 # === 追加: プロジェクトルートをパスに追加 ===
-# Dockerコンテナ内では /app がルート、ローカルではプロジェクトルート
+# Dockerコンテナ内では /src がルート、ローカルではプロジェクトルート
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # === 追加: database.py から Base をインポート ===
