@@ -7,8 +7,8 @@ ENV PYTHONDONTWRITEBYTECODE=1
 # ログを溜め込まず、すぐにコンソールに出力させる
 ENV PYTHONUNBUFFERED=1
 
-# 3. 作業ディレクトリの作成（ここが質問の箇所です）
-WORKDIR /src
+# 3. 作業ディレクトリの作成
+WORKDIR /app
 
 # 4. 依存ライブラリのインストール
 # 先にrequirements.txtだけをコピー
