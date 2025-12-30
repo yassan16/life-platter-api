@@ -12,7 +12,7 @@ life_platter-api
 - Webサーバー: Nginx (リバースプロキシ)
 
 ## HOW（基本コマンド）
-基本的な操作コマンドは `docs/commands.md` にまとめています。
+基本的な操作コマンドは `docs/setup/commands.md` にまとめています。
 
 ## プロジェクト構成
 ```
@@ -69,21 +69,30 @@ life_platter-api/
 
 ## 詳細ドキュメント
 タスクに応じて以下を参照：
-- 基本コマンド一覧: `docs/commands.md`
+
+### API仕様 (`docs/api/`)
+- エンドポイント仕様: `docs/api/endpoints.md`
+  - 実装済みエンドポイント一覧
+  - URL設計パターン
+  - 今後実装予定のエンドポイント
+- エラーレスポンス仕様: `docs/api/error-handling.md`
+  - 統一エラーレスポンス型 (error_code, message, details)
+  - レスポンス例
+
+### 環境構築・運用 (`docs/setup/`)
+- 基本コマンド一覧: `docs/setup/commands.md`
   - Docker操作（起動・停止・ログ確認）
   - API動作確認（Swagger UI、DB接続テスト）
   - マイグレーション操作（Alembic）
   - データベース直接操作
-- Alembicマイグレーションセットアップ: `docs/migration-guide.md`
+- Docker起動フロー・アーキテクチャ詳細: `docs/setup/docker-compose-startup-flow.md`
+  - データベース接続フロー
+  - リクエストフロー (Nginx → FastAPI → MySQL)
+  - Docker起動順序とシーケンス図
+
+### データベース (`docs/database/`)
+- Alembicマイグレーションセットアップ: `docs/database/migration-guide.md`
   - パッケージインストールから初期化まで
   - env.py・database.pyの非同期対応設定
   - モデル作成とマイグレーション実行フロー
   - トラブルシューティング
-- Docker起動フロー・アーキテクチャ詳細: `docs/docker-compose-startu-flow.md`
-  - データベース接続フロー
-  - リクエストフロー (Nginx → FastAPI → MySQL)
-  - Docker起動順序とシーケンス図
-- APIエンドポイント仕様: `docs/api-endpoints.md`
-  - 実装済みエンドポイント一覧
-  - URL設計パターン
-  - 今後実装予定のエンドポイント
