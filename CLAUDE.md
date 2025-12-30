@@ -70,7 +70,14 @@ life_platter-api/
 ## 詳細ドキュメント
 タスクに応じて以下を参照：
 
-### API仕様 (`docs/api/`)
+### 機能仕様 (`docs/features/`)
+- 認証機能: `docs/features/auth.md`
+  - JWT + OAuth2 Password Flow
+  - ログイン・ログアウト・トークン更新
+  - リフレッシュトークン管理
+  - レート制限
+
+### API共通仕様 (`docs/api/`)
 - エンドポイント仕様: `docs/api/endpoints.md`
   - 実装済みエンドポイント一覧
   - URL設計パターン
