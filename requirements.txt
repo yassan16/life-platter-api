@@ -6,3 +6,8 @@ cryptography
 alembic
 aiomysql
 greenlet
+python-jose[cryptography]
+passlib[bcrypt]
+slowapi
+python-multipart
+email-validator

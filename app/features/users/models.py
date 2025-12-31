@@ -1,8 +1,9 @@
 import uuid
 from enum import Enum as PyEnum
 
-from sqlalchemy import Column, String, DateTime, Enum
+from sqlalchemy import Column, String, DateTime, Enum, ForeignKey
 from sqlalchemy.dialects.mysql import CHAR
+from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 
 from app.core.database import Base
@@ -29,3 +30,21 @@ class User(Base):
     created_at = Column(DateTime, server_default=func.now(), comment="作成日時")
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now(), comment="更新日時")
     deleted_at = Column(DateTime, nullable=True, comment="削除日時（論理削除）")
+
+    # リレーション
+    refresh_tokens = relationship("RefreshToken", back_populates="user")
+
+
+class RefreshToken(Base):
+    """リフレッシュトークンテーブル"""
+    __tablename__ = "refresh_tokens"
+
+    id = Column(CHAR(36), primary_key=True, default=lambda: str(uuid.uuid4()), comment="主キー（UUID）")
+    user_id = Column(CHAR(36), ForeignKey("users.id"), nullable=False, index=True, comment="ユーザーID")
+    token_hash = Column(String(255), nullable=False, index=True, comment="トークンハッシュ（SHA-256）")
+    expires_at = Column(DateTime, nullable=False, comment="有効期限")
+    revoked_at = Column(DateTime, nullable=True, comment="無効化日時")
+    created_at = Column(DateTime, server_default=func.now(), comment="作成日時")
+
+    # リレーション
+    user = relationship("User", back_populates="refresh_tokens")

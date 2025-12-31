@@ -3,7 +3,7 @@
 Alembicの autogenerate がモデルを検出するために必要
 """
 
-from app.features.users.models import User
+from app.features.users.models import User, RefreshToken
 
 # 新しいモデルを追加したら、ここにもインポートを追加する
 # from app.features.cooking.models import Cooking

@@ -24,6 +24,7 @@ services:
       - .:/src
     environment:
       DATABASE_URL: mysql+pymysql://user:password@db/life_platter_db
+      JWT_SECRET_KEY: your-secret-key-change-in-production
     depends_on:
       - db
 
