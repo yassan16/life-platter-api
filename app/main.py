@@ -5,6 +5,7 @@ from fastapi.responses import JSONResponse
 # ※名前が被らないように "as" で別名を付けるのがコツです
 from app.features.cooking.router import router as cooking_router
 from app.features.users.router import router as users_router
+from app.features.dishes.router import router as dishes_router
 from sqlalchemy import create_engine, text
 from slowapi import Limiter
 from slowapi.util import get_remote_address
@@ -44,6 +45,9 @@ app.include_router(
     prefix="/cooking",  # URLの頭に /cooking を付ける
     tags=["Cooking"]    # Swagger UI でのグループ名
 )
+
+# 料理CRUD機能: http://localhost/dishes/xxxxx
+app.include_router(dishes_router)
 
 # ルートパスへのアクセス (Hello World)
 @app.get("/")
