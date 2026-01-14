@@ -76,10 +76,20 @@ life_platter-api/
   - ログイン・ログアウト・トークン更新
   - リフレッシュトークン管理
   - レート制限
-- 料理登録機能: `docs/features/dish/db-design.md`
-  - dishes, dish_images, dish_categories テーブル設計
-  - 削除・更新ポリシー（論理削除、Delete-Insert方式）
-  - S3画像連携フロー
+- 料理機能: `docs/features/dish/`
+  - DB設計: `db-design.md`
+    - dishes, dish_images, dish_categories テーブル設計
+    - 削除・更新ポリシー（dishesは論理削除、dish_imagesは物理削除）
+  - API仕様: `api-spec.md`
+    - CRUD API（POST/GET/PUT/DELETE /dishes）
+    - 画像の差分更新方式（images_to_add / images_to_delete）
+    - カーソルベースページネーション
+    - S3・DB連携のトランザクション管理
+  - S3画像アップロード: `s3-image-upload.md`
+    - Pre-signed URL方式
+    - セキュリティ要件（IAM、CORS、ライフサイクル）
+    - 障害パターンとリカバリ（孤立ファイル削除バッチ）
+    - CloudFront経由の画像配信
 
 ### API共通仕様 (`docs/api/`)
 - エンドポイント仕様: `docs/api/endpoints.md`
