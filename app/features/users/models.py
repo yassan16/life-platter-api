@@ -33,6 +33,7 @@ class User(Base):
 
     # リレーション
     refresh_tokens = relationship("RefreshToken", back_populates="user")
+    dishes = relationship("Dish", back_populates="user")
 
 
 class RefreshToken(Base):

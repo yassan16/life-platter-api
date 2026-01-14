@@ -22,7 +22,7 @@
 |--------|-----|------|------|
 | id | CHAR(36) | PK | UUID |
 | user_id | CHAR(36) | FK, INDEX | users.id |
-| category_id | CHAR(36) | FK, NULL, INDEX | categories.id |
+| category_id | CHAR(36) | FK, NULL, INDEX | dish_categories.id |
 | name | VARCHAR(200) | NOT NULL | 料理名 |
 | cooked_at | DATE | NOT NULL | 作った日 |
 | created_at | DateTime | NOT NULL, DEFAULT NOW() | 作成日時 |
@@ -35,7 +35,7 @@
 - INDEX (user_id, deleted_at) - 論理削除を考慮したクエリ用
 - INDEX (category_id)
 - FOREIGN KEY (user_id) REFERENCES users(id)
-- FOREIGN KEY (category_id) REFERENCES categories(id)
+- FOREIGN KEY (category_id) REFERENCES dish_categories(id)
 
 **削除ポリシー:**
 - 料理の削除: 論理削除（deleted_atに日時をセット）
@@ -71,7 +71,7 @@
   5. コミット
   6. 旧S3ファイルを非同期で削除
 
-### categories（カテゴリマスタテーブル）
+### dish_categories（カテゴリマスタテーブル）
 
 | カラム | 型 | 制約 | 説明 |
 |--------|-----|------|------|
@@ -109,7 +109,7 @@ users
   │ 1
   │
   ▼ N
-dishes ────────── N:1 ────────── categories
+dishes ────────── N:1 ────────── dish_categories
   │                              (共通マスタ)
   │ 1
   │
@@ -125,7 +125,7 @@ dish_images
 |------------|------------|------|------|
 | users | dishes | 1:N | ユーザーは複数の料理を登録可能 |
 | dishes | dish_images | 1:N | 料理は最大3枚の画像を持つ |
-| categories | dishes | 1:N | カテゴリには複数の料理が属する（任意） |
+| dish_categories | dishes | 1:N | カテゴリには複数の料理が属する（任意） |
 
 ---
 
@@ -135,7 +135,7 @@ dish_images
 |----------|----------|----------|------|
 | dishes | 論理削除 | UPDATE | deleted_atで管理 |
 | dish_images | 物理削除 | Delete-Insert | 履歴不要、S3と連携 |
-| categories | 論理削除 | UPDATE | 同名復活時はdeleted_at=NULLで復活 |
+| dish_categories | 論理削除 | UPDATE | 同名復活時はdeleted_at=NULLで復活 |
 
 ---
 

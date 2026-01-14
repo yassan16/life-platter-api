@@ -77,7 +77,7 @@ life_platter-api/
   - リフレッシュトークン管理
   - レート制限
 - 料理登録機能: `docs/features/dish/db-design.md`
-  - dishes, dish_images, categories テーブル設計
+  - dishes, dish_images, dish_categories テーブル設計
   - 削除・更新ポリシー（論理削除、Delete-Insert方式）
   - S3画像連携フロー
 
