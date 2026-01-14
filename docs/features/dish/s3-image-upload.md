@@ -18,6 +18,60 @@ APIサーバーは署名付きURL（Pre-signed URL）を発行するのみ。
 | 大容量対応 | 最大5GB | サーバーメモリ制限 |
 | スケーラビリティ | 高い | 低い |
 
+### なぜクライアントからS3に直接アップロードできるのか
+
+S3バケットはパブリックアクセスをブロックしており、通常はAWS認証情報がないとアクセスできない。
+しかし、認証情報をクライアントに渡すのはセキュリティ上危険である。
+
+Pre-signed URLは、この問題を**一時的な署名をURLに埋め込む**ことで解決する。
+
+```
+署名付きURL = S3のURL + 一時的な認証情報（署名）
+
+https://bucket.s3.amazonaws.com/dishes/temp/xxx.jpg
+  ?X-Amz-Algorithm=AWS4-HMAC-SHA256
+  &X-Amz-Credential=AKIA.../s3/aws4_request
+  &X-Amz-Date=20240114T...
+  &X-Amz-Expires=300          ← 5分間だけ有効
+  &X-Amz-Signature=abc123...  ← サーバーが生成した署名
+```
+
+**処理の流れ:**
+
+1. クライアントがAPIサーバーに「アップロードしたい」とリクエスト
+2. APIサーバーがAWS認証情報を使って署名を生成し、署名付きURLを返却
+3. クライアントが署名付きURLに対してPUTリクエスト（画像バイナリを送信）
+4. S3が署名を検証し、有効であればファイルを保存
+
+```
+通信経路の比較:
+
+サーバー経由方式:
+  クライアント → APIサーバー → S3
+  [   通信1   ] + [   通信2   ]  ← 2回転送
+
+Pre-signed URL方式:
+  クライアント → API（URLのみ）     ← 数KB、一瞬
+  クライアント → S3（画像）         ← 1回転送のみ
+```
+
+**S3側の検証処理:**
+
+1. URLの`X-Amz-Signature`を取り出す
+2. リクエスト内容（パス、メソッド、日時等）から署名を再計算
+3. 署名が一致するか確認
+4. 有効期限内か確認
+5. すべてOKならファイルを保存して200 OKを返却
+
+**セキュリティが担保される理由:**
+
+| 制約 | 値 | 効果 |
+|------|-----|------|
+| 有効期限 | 5分 | URL漏洩しても短時間で無効化 |
+| HTTPメソッド | PUTのみ | 読み取り・削除は不可 |
+| Content-Type | 指定必須 | 画像以外アップロード不可 |
+| パス | `dishes/temp/*`のみ | 他のパスには書き込み不可 |
+
 ---
 
 ## 2. アップロードフロー
@@ -574,6 +628,257 @@ app/features/dishes/
 ├── router.py           # POST /dishes/images/presigned-url 追加
 ├── schemas.py          # PresignedUrlRequest, PresignedUrlResponse 追加
 └── exceptions.py       # InvalidContentTypeError 追加
+```
+
+---
+
+## 12. モバイル実装ガイド
+
+モバイルブラウザからの画像アップロードにおけるUX考慮点と推奨実装。
+
+### 12.1 通信時間の目安
+
+Pre-signed URL方式はサーバー経由方式より高速だが、モバイル回線では画像サイズが体験に大きく影響する。
+
+| 画像サイズ | 4G回線での目安時間 | 備考 |
+|-----------|-------------------|------|
+| 500KB（圧縮後） | 1-2秒 | 推奨 |
+| 2MB | 4-8秒 | やや遅い |
+| 5MB（未圧縮） | 10秒以上 | UX低下 |
+
+**処理時間の内訳（500KB想定）:**
+
+| 処理 | 時間 |
+|------|------|
+| Pre-signed URL取得 | 100-300ms |
+| S3アップロード | 1-2秒 |
+| **合計** | **約2秒** |
+
+### 12.2 懸念点と対策一覧
+
+| 懸念 | 対策 |
+|------|------|
+| 画像サイズが大きい | クライアント側でリサイズ・圧縮 |
+| アップロード進捗が見えない | プログレスバー表示 |
+| 複数画像で時間がかかる | 並列アップロード |
+| 通信が不安定 | リトライ処理 |
+
+### 12.3 推奨：クライアント側での画像圧縮
+
+アップロード前にリサイズすることで、通信時間を大幅に短縮できる。
+
+```typescript
+/**
+ * 画像を指定サイズ以下にリサイズ・圧縮する
+ * @param file - 元の画像ファイル
+ * @param maxSize - 最大辺のピクセル数（デフォルト: 1200px）
+ * @param quality - JPEG品質（0-1、デフォルト: 0.8）
+ */
+async function compressImage(
+  file: File,
+  maxSize: number = 1200,
+  quality: number = 0.8
+): Promise<Blob> {
+  const canvas = document.createElement('canvas');
+  const img = await createImageBitmap(file);
+
+  // アスペクト比を維持してリサイズ
+  const scale = Math.min(1, maxSize / Math.max(img.width, img.height));
+  canvas.width = img.width * scale;
+  canvas.height = img.height * scale;
+
+  const ctx = canvas.getContext('2d');
+  ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+  return new Promise(resolve =>
+    canvas.toBlob(resolve, 'image/jpeg', quality)
+  );
+}
+
+// 使用例
+const compressedImage = await compressImage(originalFile);
+// 元ファイル: 5MB → 圧縮後: 約300-500KB
+```
+
+### 12.4 推奨：プログレスバー表示
+
+`XMLHttpRequest`を使用することで、アップロード進捗を取得できる。
+
+```typescript
+/**
+ * 進捗表示付きでS3にアップロード
+ * @param url - Pre-signed URL
+ * @param file - アップロードするファイル
+ * @param onProgress - 進捗コールバック（0-100）
+ */
+function uploadWithProgress(
+  url: string,
+  file: Blob,
+  onProgress: (percent: number) => void
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+
+    // アップロード進捗イベント
+    xhr.upload.onprogress = (e) => {
+      if (e.lengthComputable) {
+        const percent = Math.round((e.loaded / e.total) * 100);
+        onProgress(percent);
+      }
+    };
+
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        resolve();
+      } else {
+        reject(new Error(`Upload failed: ${xhr.status}`));
+      }
+    };
+
+    xhr.onerror = () => reject(new Error('Network error'));
+
+    xhr.open('PUT', url);
+    xhr.setRequestHeader('Content-Type', file.type);
+    xhr.send(file);
+  });
+}
+
+// 使用例（React）
+const [progress, setProgress] = useState(0);
+
+await uploadWithProgress(presignedUrl, compressedImage, setProgress);
+// UIでprogressを表示: <ProgressBar value={progress} />
+```
+
+### 12.5 推奨：複数画像の並列アップロード
+
+複数画像は`Promise.all`で並列処理することで、総アップロード時間を短縮できる。
+
+```typescript
+async function uploadMultipleImages(
+  files: File[],
+  onTotalProgress: (percent: number) => void
+): Promise<string[]> {
+  const progressMap = new Map<number, number>();
+
+  const updateTotalProgress = () => {
+    const total = Array.from(progressMap.values()).reduce((a, b) => a + b, 0);
+    onTotalProgress(Math.round(total / files.length));
+  };
+
+  const uploadPromises = files.map(async (file, index) => {
+    // 1. 圧縮
+    const compressed = await compressImage(file);
+
+    // 2. Pre-signed URL取得
+    const { upload_url, image_key } = await getPresignedUrl(compressed);
+
+    // 3. アップロード（進捗追跡）
+    await uploadWithProgress(upload_url, compressed, (percent) => {
+      progressMap.set(index, percent);
+      updateTotalProgress();
+    });
+
+    return image_key;
+  });
+
+  return Promise.all(uploadPromises);
+}
+```
+
+### 12.6 推奨：リトライ処理
+
+モバイル回線の不安定さに対応するため、指数バックオフでリトライを実装する。
+
+```typescript
+/**
+ * 指数バックオフでリトライ
+ * @param fn - 実行する非同期関数
+ * @param maxRetries - 最大リトライ回数（デフォルト: 3）
+ */
+async function withRetry<T>(
+  fn: () => Promise<T>,
+  maxRetries: number = 3
+): Promise<T> {
+  let lastError: Error;
+
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      return await fn();
+    } catch (error) {
+      lastError = error as Error;
+
+      if (attempt < maxRetries - 1) {
+        // 指数バックオフ: 1秒, 2秒, 4秒...
+        const delay = Math.pow(2, attempt) * 1000;
+        await new Promise(resolve => setTimeout(resolve, delay));
+      }
+    }
+  }
+
+  throw lastError;
+}
+
+// 使用例
+const imageKey = await withRetry(() => uploadDishImage(file));
+```
+
+### 12.7 完全な実装例
+
+上記の推奨事項をすべて組み込んだ実装例。
+
+```typescript
+interface UploadResult {
+  image_key: string;
+  display_order: number;
+}
+
+async function uploadDishImagesWithUX(
+  files: File[],
+  onProgress: (percent: number) => void,
+  onStatus: (message: string) => void
+): Promise<UploadResult[]> {
+  const results: UploadResult[] = [];
+  const progressMap = new Map<number, number>();
+
+  const updateProgress = () => {
+    const total = Array.from(progressMap.values()).reduce((a, b) => a + b, 0);
+    onProgress(Math.round(total / files.length));
+  };
+
+  onStatus('画像を圧縮中...');
+
+  const uploadPromises = files.map(async (file, index) => {
+    // 1. 圧縮
+    const compressed = await compressImage(file);
+    progressMap.set(index, 10); // 圧縮完了で10%
+    updateProgress();
+
+    // 2. Pre-signed URL取得（リトライ付き）
+    const { upload_url, image_key } = await withRetry(() =>
+      getPresignedUrl(compressed)
+    );
+    progressMap.set(index, 20); // URL取得で20%
+    updateProgress();
+
+    // 3. アップロード（リトライ付き、進捗追跡）
+    await withRetry(() =>
+      uploadWithProgress(upload_url, compressed, (percent) => {
+        // 20-100%の範囲で進捗を反映
+        progressMap.set(index, 20 + percent * 0.8);
+        updateProgress();
+      })
+    );
+
+    return { image_key, display_order: index + 1 };
+  });
+
+  onStatus('アップロード中...');
+  const uploadResults = await Promise.all(uploadPromises);
+
+  onStatus('完了');
+  return uploadResults;
+}
 ```
 
 ---
