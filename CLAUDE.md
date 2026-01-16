@@ -12,43 +12,16 @@ life_platter-api
 - Webサーバー: Nginx (リバースプロキシ)
 
 ## HOW（基本コマンド）
-基本的な操作コマンドは `docs/setup/commands.md` にまとめています。
+- 基本的な操作コマンドは `docs/setup/commands.md` を参考にすること
+- データベース接続は `app/core/deps.py` の依存性注入を使用すること
+- エンドポイントは機能ごとに `app/features/` 配下に配置
+- ルーター登録は `app/main.py` で `app.include_router()` を使用
+- 新規テーブル作成時は `models.py` を作成後、Alembicでマイグレーション生成
+- モデルは `app/features/__init__.py` でインポートを集約
+- 環境変数は `docker-compose.yml` で管理 (本番環境では `.env` 使用推奨)
+- SQLログは開発時 `echo=True`、本番では `False` に設定
 
-## プロジェクト構成
-```
-life_platter-api/
-├── alembic.ini                 # Alembic設定ファイル
-├── migrations/                 # マイグレーションファイル (Alembic)
-│   ├── versions/
-│   └── env.py
-├── app/
-│   ├── main.py                 # FastAPIアプリのエントリーポイント
-│   ├── core/                   # 機能横断の共通インフラ機能
-│   │   ├── config.py              # 設定値管理
-│   │   ├── database.py            # SQLAlchemy設定、セッション管理
-│   │   ├── security.py            # 認証・認可
-│   │   ├── exceptions.py          # 共通例外
-│   │   └── deps.py                # 共通の依存性注入
-│   └── features/               # 機能単位のモジュール構成
-│       ├── __init__.py            # 全モデルのインポート集約
-│       ├── users/
-│       │   ├── schemas.py            # リクエスト/レスポンス (Pydantic)
-│       │   ├── models.py             # SQLAlchemyモデル
-│       │   ├── repository.py         # DB操作
-│       │   ├── service.py            # ビジネスロジック
-│       │   ├── router.py             # APIエンドポイント
-│       │   └── exceptions.py         # 機能固有例外
-│       └── items/
-│           └── ...
-├── nginx/
-│   └── default.conf            # Nginx設定 (ポート80 → app:8000)
-├── docs/                       # ドキュメント
-├── docker-compose.yml          # サービス定義 (db, app, nginx)
-├── Dockerfile                  # FastAPIコンテナ定義
-└── requirements.txt            # Python依存パッケージ
-```
-
-### 機能モジュールの責務
+## 機能モジュールの責務
 | ファイル        | 責務                                             |
 | --------------- | ------------------------------------------------ |
 | `schemas.py`    | リクエスト/レスポンスのバリデーション (Pydantic) |
@@ -58,17 +31,13 @@ life_platter-api/
 | `router.py`     | APIエンドポイント定義                            |
 | `exceptions.py` | 機能固有の例外                                   |
 
-## 作業ルール
-- データベース接続は `app/core/deps.py` の依存性注入を使用すること
-- エンドポイントは機能ごとに `app/features/` 配下に配置
-- ルーター登録は `app/main.py` で `app.include_router()` を使用
-- 新規テーブル作成時は `models.py` を作成後、Alembicでマイグレーション生成
-- モデルは `app/features/__init__.py` でインポートを集約
-- 環境変数は `docker-compose.yml` で管理 (本番環境では `.env` 使用推奨)
-- SQLログは開発時 `echo=True`、本番では `False` に設定
-
 ## 詳細ドキュメント
 タスクに応じて以下を参照：
+
+### プロジェクト構成 (`docs/`)
+- プロジェクト構成: `docs/project-structure.md`
+  - ディレクトリ構造
+  - 機能モジュールの責務
 
 ### 機能仕様 (`docs/features/`)
 - 認証機能: `docs/features/auth.md`
