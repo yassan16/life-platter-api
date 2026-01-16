@@ -3,7 +3,6 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 # 各機能（features）で作ったルーターを読み込む
 # ※名前が被らないように "as" で別名を付けるのがコツです
-from app.features.cooking.router import router as cooking_router
 from app.features.users.router import router as users_router
 from app.features.dishes.router import router as dishes_router
 from sqlalchemy import create_engine, text
@@ -38,13 +37,6 @@ DATABASE_URL = os.getenv("DATABASE_URL")
 # --- ルーターの統合 ---
 # ユーザー機能: http://localhost/users/xxxxx
 app.include_router(users_router)
-
-# 料理機能: http://localhost/cooking/xxxxx
-app.include_router(
-    cooking_router,
-    prefix="/cooking",  # URLの頭に /cooking を付ける
-    tags=["Cooking"]    # Swagger UI でのグループ名
-)
 
 # 料理CRUD機能: http://localhost/dishes/xxxxx
 app.include_router(dishes_router)
