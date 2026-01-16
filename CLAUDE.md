@@ -20,6 +20,7 @@ life_platter-api
 - モデルは `app/features/__init__.py` でインポートを集約
 - 環境変数は `docker-compose.yml` で管理 (本番環境では `.env` 使用推奨)
 - SQLログは開発時 `echo=True`、本番では `False` に設定
+- ドキュメントを作成する際は、Mermaidでフローチャートやシーケンス図を活用すること
 
 ## 機能モジュールの責務
 | ファイル        | 責務                                             |
