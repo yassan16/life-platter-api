@@ -15,8 +15,11 @@ from app.features.dishes.schemas import (
     DishResponse,
     DishListResponse,
     MessageResponse,
+    PresignedUrlRequest,
+    PresignedUrlResponse,
 )
 from app.features.dishes.service import DishService
+from app.features.dishes.s3_service import s3_service
 from app.features.dishes.exceptions import (
     DishNotFoundError,
     PermissionDeniedError,
@@ -111,6 +114,23 @@ def list_dishes(
                 "details": None,
             },
         )
+
+
+@router.post(
+    "/images/presigned-url",
+    response_model=PresignedUrlResponse,
+    status_code=status.HTTP_200_OK,
+)
+def get_presigned_url(
+    request: PresignedUrlRequest,
+    current_user: User = Depends(get_current_user),
+):
+    """画像アップロード用のPre-signed URLを取得"""
+    result = s3_service.generate_presigned_url(
+        content_type=request.content_type,
+        file_size=request.file_size,
+    )
+    return PresignedUrlResponse(**result)
 
 
 @router.get("/{dish_id}", response_model=DishResponse)

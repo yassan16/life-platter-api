@@ -11,3 +11,4 @@ passlib[bcrypt]
 slowapi
 python-multipart
 email-validator
+boto3

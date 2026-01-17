@@ -44,3 +44,13 @@ class ImageNotOwnedError(Exception):
 class S3ObjectNotFoundError(Exception):
     """S3オブジェクトが存在しない"""
     pass
+
+
+class InvalidContentTypeError(Exception):
+    """許可されていないContent-Type"""
+    pass
+
+
+class FileSizeExceededError(Exception):
+    """ファイルサイズが上限超過"""
+    pass

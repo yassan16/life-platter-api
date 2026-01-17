@@ -1,25 +1,80 @@
-"""S3操作サービス（スタブ実装）
+"""S3操作サービス
 
-NOTE: このファイルはS3操作のインターフェースを定義しています。
-現在はスタブ実装となっており、実際のS3操作は行いません。
-将来のS3統合時に実装を置き換えてください。
+NOTE: S3_BUCKET_NAMEが未設定の場合はスタブモードで動作します。
 """
 
 import os
+import uuid
+
+import boto3
+from botocore.config import Config
+
+from app.core.config import S3_BUCKET_NAME, AWS_REGION, PRESIGNED_URL_EXPIRES
 
 
 # 設定値
 CLOUDFRONT_DOMAIN = os.getenv("CLOUDFRONT_DOMAIN", "https://d1234567890.cloudfront.net")
 
+CONTENT_TYPE_TO_EXTENSION = {
+    "image/jpeg": "jpg",
+    "image/png": "png",
+    "image/webp": "webp",
+}
+
 
 class S3Service:
-    """S3操作サービス（スタブ）"""
+    """S3操作サービス"""
 
     def __init__(self):
-        # TODO: S3クライアント初期化
-        # self.s3_client = boto3.client('s3')
-        # self.bucket_name = os.getenv("S3_BUCKET_NAME")
-        pass
+        self.bucket_name = S3_BUCKET_NAME
+        self.region = AWS_REGION
+        self.presigned_url_expires = PRESIGNED_URL_EXPIRES
+
+        if self.bucket_name:
+            self.s3_client = boto3.client(
+                "s3",
+                region_name=self.region,
+                config=Config(signature_version="s3v4"),
+            )
+        else:
+            self.s3_client = None  # スタブモード
+
+    def generate_presigned_url(self, content_type: str, file_size: int) -> dict:
+        """Pre-signed URLを生成
+
+        Args:
+            content_type: MIMEタイプ
+            file_size: ファイルサイズ（バイト）
+
+        Returns:
+            upload_url, image_key, expires_in を含む辞書
+        """
+        extension = CONTENT_TYPE_TO_EXTENSION.get(content_type, "jpg")
+        image_key = f"dishes/temp/{uuid.uuid4()}.{extension}"
+
+        if self.s3_client is None:
+            # スタブモード（S3_BUCKET_NAMEが未設定の場合）
+            return {
+                "upload_url": f"https://stub-bucket.s3.{self.region}.amazonaws.com/{image_key}?stub=true",
+                "image_key": image_key,
+                "expires_in": self.presigned_url_expires,
+            }
+
+        upload_url = self.s3_client.generate_presigned_url(
+            "put_object",
+            Params={
+                "Bucket": self.bucket_name,
+                "Key": image_key,
+                "ContentType": content_type,
+                "ContentLength": file_size,
+            },
+            ExpiresIn=self.presigned_url_expires,
+        )
+        return {
+            "upload_url": upload_url,
+            "image_key": image_key,
+            "expires_in": self.presigned_url_expires,
+        }
 
     def check_object_exists(self, image_key: str) -> bool:
         """
@@ -30,10 +85,10 @@ class S3Service:
 
         Returns:
             bool: オブジェクトが存在する場合True
-
-        TODO: 実際のS3 HeadObject呼び出しに置き換え
         """
-        # スタブ: 常にTrueを返す
+        if self.s3_client is None:
+            # スタブモード: 常にTrueを返す
+            return True
         # TODO: boto3.client('s3').head_object(Bucket=bucket, Key=image_key)
         return True
 
@@ -47,10 +102,10 @@ class S3Service:
 
         Returns:
             bool: コピー成功の場合True
-
-        TODO: 実際のS3 CopyObject呼び出しに置き換え
         """
-        # スタブ: 常にTrueを返す
+        if self.s3_client is None:
+            # スタブモード: 常にTrueを返す
+            return True
         # TODO: s3_client.copy_object(...)
         return True
 
@@ -63,10 +118,10 @@ class S3Service:
 
         Returns:
             bool: 削除成功の場合True（失敗しても問題なし）
-
-        TODO: 実際のS3 DeleteObject呼び出しに置き換え
         """
-        # スタブ: 常にTrueを返す
+        if self.s3_client is None:
+            # スタブモード: 常にTrueを返す
+            return True
         # TODO: s3_client.delete_object(Bucket=bucket, Key=image_key)
         return True
 

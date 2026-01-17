@@ -101,3 +101,28 @@ class DishListResponse(BaseModel):
 class MessageResponse(BaseModel):
     """メッセージレスポンス"""
     message: str
+
+
+# === Pre-signed URL関連 ===
+
+ALLOWED_CONTENT_TYPES = {"image/jpeg", "image/png", "image/webp"}
+
+
+class PresignedUrlRequest(BaseModel):
+    """Pre-signed URL取得リクエスト"""
+    content_type: str = Field(...)
+    file_size: int = Field(..., ge=1, le=10485760)
+
+    @field_validator("content_type")
+    @classmethod
+    def validate_content_type(cls, v: str) -> str:
+        if v not in ALLOWED_CONTENT_TYPES:
+            raise ValueError(f"許可されていないMIMEタイプです: {v}")
+        return v
+
+
+class PresignedUrlResponse(BaseModel):
+    """Pre-signed URLレスポンス"""
+    upload_url: str
+    image_key: str
+    expires_in: int
