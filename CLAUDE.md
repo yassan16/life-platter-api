@@ -11,16 +11,29 @@ life_platter-api
 - インフラ: Docker (3サービス構成: MySQL + FastAPI + Nginx)
 - Webサーバー: Nginx (リバースプロキシ)
 
-## HOW（基本コマンド）
-- 基本的な操作コマンドは `docs/setup/commands.md` を参考にすること
-- データベース接続は `app/core/deps.py` の依存性注入を使用すること
-- エンドポイントは機能ごとに `app/features/` 配下に配置
+## HOW（開発ガイドライン）
+
+### コマンド
+基本的な操作コマンドは `docs/setup/commands.md` を参照。
+
+### エンドポイント追加
+- 機能ごとに `app/features/` 配下に配置
 - ルーター登録は `app/main.py` で `app.include_router()` を使用
-- 新規テーブル作成時は `models.py` を作成後、Alembicでマイグレーション生成
+
+### データベース
+- 接続は `app/core/deps.py` の依存性注入を使用
+- 新規テーブル: `models.py` 作成後、Alembicでマイグレーション生成
 - モデルは `app/features/__init__.py` でインポートを集約
-- 環境変数は `docker-compose.yml` で管理 (本番環境では `.env` 使用推奨)
-- SQLログは開発時 `echo=True`、本番では `False` に設定
-- ドキュメントを作成する際は、Mermaidでフローチャートやシーケンス図を活用すること
+- SQLログ: 開発時 `echo=True`、本番は `False`
+
+### 環境変数
+- `docker-compose.yml` で管理（本番環境では `.env` 使用推奨）
+
+### ドキュメント
+- Mermaidでフローチャートやシーケンス図を活用
+
+## 詳細ドキュメント
+詳細は `docs/README.md` を参照。
 
 ## 機能モジュールの責務
 | ファイル        | 責務                                             |
@@ -31,59 +44,3 @@ life_platter-api
 | `service.py`    | ビジネスロジック                                 |
 | `router.py`     | APIエンドポイント定義                            |
 | `exceptions.py` | 機能固有の例外                                   |
-
-## 詳細ドキュメント
-タスクに応じて以下を参照：
-
-### プロジェクト構成 (`docs/`)
-- プロジェクト構成: `docs/project-structure.md`
-  - ディレクトリ構造
-  - 機能モジュールの責務
-
-### 機能仕様 (`docs/features/`)
-- 認証機能: `docs/features/auth.md`
-  - JWT + OAuth2 Password Flow
-  - ログイン・ログアウト・トークン更新
-  - リフレッシュトークン管理
-  - レート制限
-- 料理機能: `docs/features/dish/`
-  - DB設計: `db-design.md`
-    - dishes, dish_images, dish_categories テーブル設計
-    - 削除・更新ポリシー（dishesは論理削除、dish_imagesは物理削除）
-  - API仕様: `api-spec.md`
-    - CRUD API（POST/GET/PUT/DELETE /dishes）
-    - 画像の差分更新方式（images_to_add / images_to_delete）
-    - カーソルベースページネーション
-    - S3・DB連携のトランザクション管理
-  - S3画像アップロード: `s3-image-upload.md`
-    - Pre-signed URL方式
-    - セキュリティ要件（IAM、CORS、ライフサイクル）
-    - 障害パターンとリカバリ（孤立ファイル削除バッチ）
-    - CloudFront経由の画像配信
-
-### API共通仕様 (`docs/api/`)
-- エンドポイント仕様: `docs/api/endpoints.md`
-  - 実装済みエンドポイント一覧
-  - URL設計パターン
-  - 今後実装予定のエンドポイント
-- エラーレスポンス仕様: `docs/api/error-handling.md`
-  - 統一エラーレスポンス型 (error_code, message, details)
-  - レスポンス例
-
-### 環境構築・運用 (`docs/setup/`)
-- 基本コマンド一覧: `docs/setup/commands.md`
-  - Docker操作（起動・停止・ログ確認）
-  - API動作確認（Swagger UI、DB接続テスト）
-  - マイグレーション操作（Alembic）
-  - データベース直接操作
-- Docker起動フロー・アーキテクチャ詳細: `docs/setup/docker-compose-startup-flow.md`
-  - データベース接続フロー
-  - リクエストフロー (Nginx → FastAPI → MySQL)
-  - Docker起動順序とシーケンス図
-
-### データベース (`docs/database/`)
-- Alembicマイグレーションセットアップ: `docs/database/migration-guide.md`
-  - パッケージインストールから初期化まで
-  - env.py・database.pyの非同期対応設定
-  - モデル作成とマイグレーション実行フロー
-  - トラブルシューティング
