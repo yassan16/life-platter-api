@@ -11,6 +11,7 @@ env/
 # --- 環境変数・秘密情報 (【最重要】絶対コミットしない！) ---
 .env
 .env.local
+.env.production
 config.py
 
 # --- Docker (ローカルデータやログ) ---

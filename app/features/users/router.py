@@ -5,7 +5,7 @@ from slowapi import Limiter
 from slowapi.util import get_remote_address
 from sqlalchemy.orm import Session
 
-from app.core.config import RATE_LIMIT_AUTH
+from app.core.config import settings
 from app.core.database import get_db
 from app.core.security import get_current_user
 from app.features.users.models import User
@@ -31,7 +31,7 @@ limiter = Limiter(key_func=get_remote_address)
 
 
 @router.post("/users/register", response_model=TokenResponse, tags=["Users"])
-@limiter.limit(RATE_LIMIT_AUTH)
+@limiter.limit(settings.rate_limit_auth)
 def register(
     request: Request,
     body: RegisterRequest,
@@ -53,7 +53,7 @@ def register(
 
 
 @router.post("/users/login", response_model=TokenResponse, tags=["Users"])
-@limiter.limit(RATE_LIMIT_AUTH)
+@limiter.limit(settings.rate_limit_auth)
 def login(
     request: Request,
     body: LoginRequest,
@@ -84,7 +84,7 @@ def login(
 
 
 @router.post("/users/refresh", response_model=TokenResponse, tags=["Users"])
-@limiter.limit(RATE_LIMIT_AUTH)
+@limiter.limit(settings.rate_limit_auth)
 def refresh(
     request: Request,
     body: RefreshRequest,

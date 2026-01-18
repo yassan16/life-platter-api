@@ -3,17 +3,13 @@
 NOTE: S3_BUCKET_NAMEが未設定の場合はスタブモードで動作します。
 """
 
-import os
 import uuid
 
 import boto3
 from botocore.config import Config
 
-from app.core.config import S3_BUCKET_NAME, AWS_REGION, PRESIGNED_URL_EXPIRES
+from app.core.config import settings
 
-
-# 設定値
-CLOUDFRONT_DOMAIN = os.getenv("CLOUDFRONT_DOMAIN", "https://d1234567890.cloudfront.net")
 
 CONTENT_TYPE_TO_EXTENSION = {
     "image/jpeg": "jpg",
@@ -26,9 +22,10 @@ class S3Service:
     """S3操作サービス"""
 
     def __init__(self):
-        self.bucket_name = S3_BUCKET_NAME
-        self.region = AWS_REGION
-        self.presigned_url_expires = PRESIGNED_URL_EXPIRES
+        self.bucket_name = settings.s3_bucket_name
+        self.region = settings.aws_region
+        self.presigned_url_expires = settings.presigned_url_expires
+        self.cloudfront_domain = settings.cloudfront_domain
 
         if self.bucket_name:
             self.s3_client = boto3.client(
@@ -135,7 +132,10 @@ class S3Service:
         Returns:
             str: CloudFront経由の画像URL
         """
-        return f"{CLOUDFRONT_DOMAIN}/{image_key}"
+        if self.cloudfront_domain:
+            return f"{self.cloudfront_domain}/{image_key}"
+        # CloudFrontが設定されていない場合はS3直接URLを返す
+        return f"https://{self.bucket_name}.s3.{self.region}.amazonaws.com/{image_key}"
 
     def generate_permanent_key(
         self, dish_id: str, display_order: int, extension: str = "jpg"

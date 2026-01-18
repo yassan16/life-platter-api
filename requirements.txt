@@ -12,3 +12,4 @@ slowapi
 python-multipart
 email-validator
 boto3
+pydantic-settings

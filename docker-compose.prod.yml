@@ -1,0 +1,8 @@
+# 本番環境（EC2）用設定
+# 使用方法: docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+services:
+  app:
+    restart: always
+    env_file:
+      - .env.production
+    # ソースコードのマウントは行わない（ビルド時にコピー済み）

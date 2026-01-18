@@ -1,7 +1,8 @@
-import os
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, DeclarativeBase
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
+
+from app.core.config import settings
 
 
 # === Base クラス（全モデルの基底） ===
@@ -10,16 +11,9 @@ class Base(DeclarativeBase):
     pass
 
 
-# === 接続URL ===
-DATABASE_URL = os.getenv("DATABASE_URL")  # 同期用: mysql+pymysql://...
-ASYNC_DATABASE_URL = os.getenv("ASYNC_DATABASE_URL")  # 非同期用: mysql+aiomysql://...
-
 # === 同期エンジン（Alembicマイグレーション用） ===
-if not DATABASE_URL:
-    raise ValueError("DATABASE_URL environment variable is not set")
-
 engine = create_engine(
-    DATABASE_URL,
+    settings.database_url,
     echo=True,
     pool_pre_ping=True,
 )
@@ -32,9 +26,9 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 async_engine = None
 AsyncSessionLocal = None
 
-if ASYNC_DATABASE_URL:
+if settings.async_database_url:
     async_engine = create_async_engine(
-        ASYNC_DATABASE_URL,
+        settings.async_database_url,
         echo=True,
         pool_pre_ping=True,
     )

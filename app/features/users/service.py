@@ -4,7 +4,7 @@ from datetime import datetime, timedelta, timezone
 
 from sqlalchemy.orm import Session
 
-from app.core.config import REFRESH_TOKEN_EXPIRE_DAYS
+from app.core.config import settings
 from app.core.security import (
     hash_password,
     verify_password,
@@ -139,7 +139,7 @@ class AuthService:
 
         # リフレッシュトークンをDBに保存
         token_hash = hash_token(refresh_token)
-        expires_at = datetime.now(timezone.utc) + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
+        expires_at = datetime.now(timezone.utc) + timedelta(days=settings.refresh_token_expire_days)
         self.token_repo.create(user.id, token_hash, expires_at)
 
         return TokenResponse(
