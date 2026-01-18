@@ -74,7 +74,94 @@ Pre-signed URL方式:
 
 ---
 
-## 2. アップロードフロー
+## 2. なぜ一時ファイル（temp）が必要なのか？
+
+### 2.1 問題提起：S3とDBの操作タイミングのズレ
+
+料理画像のアップロードでは、以下のジレンマが存在する。
+
+**理想の画像パス構造:**
+```
+dishes/{dish_id}/{display_order}.jpg
+例: dishes/12345/1.jpg
+```
+
+**問題:**
+- クライアントがS3に直接アップロードする時点では、まだ料理が登録されていない
+- DB INSERTが完了して初めて`dish_id`が確定する
+- しかし、S3アップロードはDB登録の前に実行される必要がある
+
+**タイムライン:**
+```
+❌ 不可能なフロー:
+  1. dish_idを取得する        ← まだ料理が存在しない！
+  2. S3にアップロード: dishes/{dish_id}/1.jpg
+  3. 料理をDBに登録
+```
+
+### 2.2 なぜdish_idが事前に確定できないのか
+
+| 理由 | 詳細 |
+|------|------|
+| クライアント直接アップロード方式 | Pre-signed URL方式では、クライアントが直接S3にアップロードするため、APIサーバーはアップロード時点で料理情報を持たない |
+| DB INSERTのタイミング | dish_idはDBのAUTO_INCREMENTで生成されるため、INSERTが完了するまで確定しない |
+| トランザクション整合性 | 画像アップロード後に料理登録が失敗する可能性があり、dish_idを先に予約すると欠番が発生する |
+
+### 2.3 解決策：2段階パス方式
+
+一時パスを経由することで、この問題を解決する。
+
+**フロー:**
+```
+✅ 実際のフロー:
+  1. S3にアップロード: dishes/temp/{uuid}.jpg    ← 一時保存
+  2. 料理をDBに登録 → dish_idが確定
+  3. S3内でコピー: dishes/temp/{uuid}.jpg → dishes/{dish_id}/1.jpg
+  4. 一時ファイルを削除（オプション）
+```
+
+**メリット:**
+| 項目 | 説明 |
+|------|------|
+| dish_id不要 | アップロード時点でdish_idが不要 |
+| 整合性確保 | 料理登録が失敗しても、一時ファイルは24時間後に自動削除される |
+| パス一貫性 | 最終的には理想のパス構造 `dishes/{dish_id}/` を維持 |
+
+### 2.4 詳細フロー図
+
+各ステップでのS3とDBの状態を明示。
+
+```
+ステップ1: 画像アップロード
+┌────────────────────────────────┐
+│ S3: dishes/temp/abc-123.jpg    │ ← 一時保存
+│ DB: （料理未登録）              │
+└────────────────────────────────┘
+
+ステップ2: 料理登録
+┌────────────────────────────────┐
+│ S3: dishes/temp/abc-123.jpg    │
+│ DB: INSERT INTO dishes         │
+│     → dish_id = 550 確定       │ ← dish_idが生成される
+└────────────────────────────────┘
+
+ステップ3: 正式パスにコピー
+┌────────────────────────────────┐
+│ S3: dishes/temp/abc-123.jpg    │ ← 元ファイル残存
+│     dishes/550/1.jpg           │ ← コピー完了
+│ DB: dish_id=550, image_key=... │
+└────────────────────────────────┘
+
+ステップ4: 一時ファイル削除（24時間後に自動 or 即座に削除）
+┌────────────────────────────────┐
+│ S3: dishes/550/1.jpg           │ ← 正式パスのみ残る
+│ DB: dish_id=550, image_key=... │
+└────────────────────────────────┘
+```
+
+---
+
+## 3. アップロードフロー
 
 ### シーケンス図
 
@@ -114,7 +201,200 @@ Pre-signed URL方式:
 
 ---
 
-## 3. エンドポイント仕様
+## 4. 未実装機能の必要性
+
+現在のシーケンス図（`## 3. アップロードフロー`）では、以下の3つの未実装機能が存在する。
+
+```
+4. S3画像存在確認          → check_object_exists()
+5. 正式パスにコピー        → copy_to_permanent()
+一時ファイル削除           → delete_object()
+```
+
+これらの機能が**なぜ必要なのか**を、技術的背景とともに解説する。
+
+### 4.1 check_object_exists() - S3オブジェクト存在確認
+
+**目的:** セキュリティと整合性の確保
+
+**なぜ必要？**
+
+| シナリオ | 存在確認なし | 存在確認あり |
+|---------|-------------|-------------|
+| アップロード失敗 | DB登録が成功してしまい、画像URLが404になる（不整合） | 事前検知してエラー返却、DB登録を中止 |
+| 悪意のあるユーザー | 存在しない`image_key`を送信してDBに不正データを保存 | 不正リクエストを検知して拒否 |
+| ネットワークエラー | S3アップロード途中でタイムアウトしたが気づかない | 早期検出してユーザーに再試行を促せる |
+
+**実装方法:**
+
+```python
+import boto3
+from botocore.exceptions import ClientError
+
+async def check_object_exists(bucket: str, key: str) -> bool:
+    """S3オブジェクトの存在確認
+
+    Args:
+        bucket: S3バケット名
+        key: オブジェクトキー（例: dishes/temp/abc-123.jpg）
+
+    Returns:
+        True: オブジェクトが存在する
+        False: オブジェクトが存在しない
+    """
+    s3_client = boto3.client('s3')
+
+    try:
+        s3_client.head_object(Bucket=bucket, Key=key)
+        return True
+    except ClientError as e:
+        if e.response['Error']['Code'] == '404':
+            return False
+        else:
+            # その他のエラー（権限エラーなど）
+            raise
+```
+
+**EC2→S3アクセス:** ✅ あり（HeadObjectリクエスト、軽量）
+
+**使用箇所:** 料理登録API（POST /dishes）の入力検証
+
+---
+
+### 4.2 copy_to_permanent() - 正式パスへのコピー
+
+**目的:** dish_id確定後の正式保存
+
+**なぜ必要？**
+
+1. **dish_idはDB登録後にしか確定しない**
+   - AUTO_INCREMENTでIDが生成されるため、INSERT完了まで不明
+   - クライアントアップロード時点ではdish_idを含むパスを使えない
+
+2. **画像パスの一貫性**
+   - すべての画像を`dishes/{dish_id}/`配下に統一
+   - CloudFront URL生成やバッチ処理がシンプルになる
+
+3. **temp領域の自動クリーンアップとの連携**
+   - tempファイルは24時間後に自動削除される
+   - コピーせずに放置すると、画像が消失する
+
+**実装方法:**
+
+```python
+import boto3
+
+async def copy_to_permanent(
+    bucket: str,
+    source_key: str,
+    destination_key: str
+) -> None:
+    """S3内でオブジェクトをコピー（サーバーサイドコピー）
+
+    Args:
+        bucket: S3バケット名
+        source_key: コピー元キー（例: dishes/temp/abc-123.jpg）
+        destination_key: コピー先キー（例: dishes/550/1.jpg）
+    """
+    s3_client = boto3.client('s3')
+
+    copy_source = {'Bucket': bucket, 'Key': source_key}
+
+    s3_client.copy_object(
+        CopySource=copy_source,
+        Bucket=bucket,
+        Key=destination_key,
+        MetadataDirective='COPY',  # メタデータもコピー
+        ServerSideEncryption='AES256'  # 暗号化
+    )
+```
+
+**EC2→S3アクセス:** ✅ あり（CopyObjectリクエスト）
+- **注意:** S3内コピーなので、ファイルはEC2を経由せずS3内で直接コピーされる（高速）
+
+**使用箇所:** 料理登録API（POST /dishes）のDB保存直前
+
+---
+
+### 4.3 delete_object() - オブジェクト削除
+
+**目的:** 不要ファイルの削除
+
+**なぜ必要？**
+
+| ケース | 削除対象 | 重要度 | 理由 |
+|--------|---------|:------:|------|
+| 料理登録完了後 | tempファイル | 低 | 24h後に自動削除されるため必須ではない |
+| 料理更新時 | 古い画像 | 高 | 自動削除されず、放置するとゴミが蓄積 |
+| 料理削除時 | 全画像 | 高 | 孤立ファイルとしてストレージコストが発生 |
+
+**設計原則:**
+
+> **ゴミは許容、不整合は許容しない**
+>
+> - S3に不要ファイルが残ることは許容する（定期バッチで削除）
+> - DBが参照する画像が存在しない状態は絶対に許容しない（ユーザーに404エラー）
+
+**実装方法:**
+
+```python
+import boto3
+
+async def delete_object(bucket: str, key: str) -> None:
+    """S3オブジェクトを削除
+
+    Args:
+        bucket: S3バケット名
+        key: 削除するオブジェクトキー
+    """
+    s3_client = boto3.client('s3')
+
+    try:
+        s3_client.delete_object(Bucket=bucket, Key=key)
+    except Exception as e:
+        # 削除失敗はログ記録のみ、エラーを投げない
+        # → ゴミファイルは許容する設計
+        logger.warning(f"Failed to delete S3 object: {key}, error: {e}")
+```
+
+**EC2→S3アクセス:** ✅ あり（DeleteObjectリクエスト）
+
+**使用箇所:**
+- 料理登録完了後（バックグラウンドタスク）
+- 料理更新API（PUT /dishes/{id}）
+- 料理削除API（DELETE /dishes/{id}）
+
+---
+
+## 5. EC2からS3へのアクセスパターン
+
+各操作におけるEC2とS3間の通信を整理。
+
+| 操作 | 実装状況 | EC2→S3 | タイミング | S3 API | 説明 |
+|------|---------|:------:|----------|--------|------|
+| Pre-signed URL生成 | ✅ 実装済み | あり | Pre-signed URL取得時 | - | boto3でs3:PutObjectの署名生成（S3リクエストなし） |
+| 画像存在確認 | ❌ TODO | あり（将来） | 料理登録時 | HeadObject | S3オブジェクトのメタデータ取得 |
+| 正式パスにコピー | ❌ TODO | あり（将来） | 料理登録時 | CopyObject | S3内コピー（EC2経由なし、高速） |
+| 一時ファイル削除 | ❌ TODO | あり（将来） | 料理登録後 | DeleteObject | S3オブジェクト削除 |
+| CloudFront URL生成 | ✅ 実装済み | なし | 画像URL生成時 | - | 文字列組み立てのみ（`https://{domain}/{key}`） |
+
+**注意事項:**
+
+1. **Pre-signed URL生成はS3リクエストを発行しない**
+   - 署名生成はローカル処理（AWS認証情報を使って暗号化するだけ）
+   - S3への通信は発生しない
+
+2. **CopyObjectはEC2のメモリを使わない**
+   - S3内で直接コピーされるため、大容量ファイルでもEC2負荷なし
+   - 数GB規模でも高速処理可能
+
+3. **HeadObjectは軽量**
+   - ファイル本体を取得せず、メタデータのみ（数百バイト）
+   - リクエストコストは低い
+
+---
+
+## 6. エンドポイント仕様
 
 ### POST /dishes/images/presigned-url
 
@@ -168,11 +448,11 @@ Content-Type: application/json
 
 ---
 
-## 4. セキュリティ要件
+## 7. セキュリティ要件
 
 AWS公式ベストプラクティスに基づく設計。
 
-### 4.1 Pre-signed URL設定
+### 7.1 Pre-signed URL設定
 
 | 設定項目 | 値 | 理由 |
 |---------|-----|------|
@@ -181,7 +461,7 @@ AWS公式ベストプラクティスに基づく設計。
 | Content-Type | 指定必須 | 予期しないファイルタイプを防止 |
 | Content-Length | 上限10MB | DoS攻撃防止 |
 
-### 4.2 S3バケット設定
+### 7.2 S3バケット設定
 
 ```
 dishes/
@@ -198,7 +478,7 @@ dishes/
 | CORS | 許可オリジン指定 | フロントエンドドメインのみ許可 |
 | 暗号化 | SSE-S3 | 保存時暗号化 |
 
-### 4.3 IAMポリシー
+### 7.3 IAMポリシー
 
 #### アプリケーション用（最小権限）
 
@@ -264,7 +544,7 @@ AWS コンソールやCLIから画像を操作するための権限:
 > **Note**: CloudFront OACはHTTP経由の外部アクセスを制御するもの。
 > IAM認証を使用するコンソール/CLIからのアクセスは、上記IAMポリシーで制御される。
 
-### 4.4 CORS設定
+### 7.4 CORS設定
 
 ```json
 [
@@ -280,9 +560,9 @@ AWS コンソールやCLIから画像を操作するための権限:
 
 ---
 
-## 5. クライアント実装ガイド（Next.js）
+## 8. クライアント実装ガイド（Next.js）
 
-### 5.1 画像アップロード関数
+### 8.1 画像アップロード関数
 
 ```typescript
 interface PresignedUrlResponse {
@@ -330,7 +610,7 @@ async function uploadDishImage(file: File): Promise<string> {
 }
 ```
 
-### 5.2 料理登録フロー
+### 8.2 料理登録フロー
 
 ```typescript
 async function createDishWithImages(
@@ -366,7 +646,7 @@ async function createDishWithImages(
 
 ---
 
-## 6. エラーハンドリング
+## 9. エラーハンドリング
 
 ### クライアント側のリトライ戦略
 
@@ -385,11 +665,11 @@ async function createDishWithImages(
 
 ---
 
-## 7. 障害パターンとリカバリ
+## 10. 障害パターンとリカバリ
 
 各処理ステップで障害が発生した場合の振る舞いと復旧方法を定義する。
 
-### 7.1 障害パターン一覧
+### 10.1 障害パターン一覧
 
 | # | 障害発生箇所 | 状態 | 自動リカバリ | 備考 |
 |---|-------------|------|:------------:|------|
@@ -401,7 +681,7 @@ async function createDishWithImages(
 | 6 | 一時ファイル削除 | DB完了、S3正式パスあり | ✅ | 24h後に自動削除 |
 | 7 | 旧ファイル削除 | DB完了、S3正式パスあり | ⚠️ | 定期バッチで削除推奨 |
 
-### 7.2 各パターンの詳細
+### 10.2 各パターンの詳細
 
 #### パターン5: DBトランザクション失敗時
 
@@ -437,7 +717,7 @@ DB状態:
 **リカバリ**:
 - 定期バッチで`dish_images`に存在しないS3オブジェクトを削除
 
-### 7.3 孤立ファイル削除バッチ（推奨実装）
+### 10.3 孤立ファイル削除バッチ（推奨実装）
 
 `dish_images`テーブルに存在しない正式パスのS3オブジェクトを定期的に削除する。
 
@@ -465,7 +745,7 @@ async def cleanup_orphan_images():
 
 **実行頻度**: 1日1回（深夜帯推奨）
 
-### 7.4 設計原則
+### 10.4 設計原則
 
 1. **S3操作はトランザクション外で実行**: S3は2フェーズコミット非対応
 2. **ゴミは許容、不整合は許容しない**: S3に不要ファイルが残ることは許容するが、DBが参照するファイルが存在しない状態は許容しない
@@ -473,7 +753,7 @@ async def cleanup_orphan_images():
 
 ---
 
-## 8. 一時ファイルのクリーンアップ
+## 11. 一時ファイルのクリーンアップ
 
 ### 自動クリーンアップ（推奨）
 
@@ -509,9 +789,9 @@ async def cleanup_temp_images(temp_keys: list[str]):
 
 ---
 
-## 9. 画像配信（CloudFront）
+## 12. 画像配信（CloudFront）
 
-### 9.1 アーキテクチャ
+### 12.1 アーキテクチャ
 
 ```
 ┌────────┐     ┌────────────┐     ┌────────┐
@@ -522,7 +802,7 @@ async def cleanup_temp_images(temp_keys: list[str]):
               キャッシュ
 ```
 
-### 9.2 CloudFront設定
+### 12.2 CloudFront設定
 
 | 設定項目 | 値 | 説明 |
 |---------|-----|------|
@@ -532,7 +812,7 @@ async def cleanup_temp_images(temp_keys: list[str]):
 | ビューワープロトコル | HTTPS only | セキュリティ |
 | 価格クラス | PriceClass_200 | 日本含むアジア最適化 |
 
-### 9.3 Origin Access Control (OAC)
+### 12.3 Origin Access Control (OAC)
 
 S3への直接アクセスを禁止し、CloudFront経由のみ許可。
 
@@ -558,7 +838,7 @@ S3への直接アクセスを禁止し、CloudFront経由のみ許可。
 }
 ```
 
-### 9.4 署名付きURL生成（オプション）
+### 12.4 署名付きURL生成（オプション）
 
 プライベートコンテンツの場合、CloudFront署名付きURLを使用:
 
@@ -587,7 +867,7 @@ def generate_signed_url(image_key: str) -> str:
     return signed_url
 ```
 
-### 9.5 レスポンスでの画像URL
+### 12.5 レスポンスでの画像URL
 
 料理取得APIのレスポンスでは、CloudFront URLを返却:
 
@@ -605,7 +885,7 @@ def generate_signed_url(image_key: str) -> str:
 
 ---
 
-## 10. 設定値一覧
+## 13. 設定値一覧
 
 | 設定項目 | 環境変数 | デフォルト値 |
 |---------|---------|-------------|
@@ -620,7 +900,7 @@ def generate_signed_url(image_key: str) -> str:
 
 ---
 
-## 11. 実装ファイル構成
+## 14. 実装ファイル構成
 
 ```
 app/features/dishes/
@@ -632,11 +912,11 @@ app/features/dishes/
 
 ---
 
-## 12. モバイル実装ガイド
+## 15. モバイル実装ガイド
 
 モバイルブラウザからの画像アップロードにおけるUX考慮点と推奨実装。
 
-### 12.1 通信時間の目安
+### 15.1 通信時間の目安
 
 Pre-signed URL方式はサーバー経由方式より高速だが、モバイル回線では画像サイズが体験に大きく影響する。
 
@@ -654,7 +934,7 @@ Pre-signed URL方式はサーバー経由方式より高速だが、モバイル
 | S3アップロード | 1-2秒 |
 | **合計** | **約2秒** |
 
-### 12.2 懸念点と対策一覧
+### 15.2 懸念点と対策一覧
 
 | 懸念 | 対策 |
 |------|------|
@@ -663,7 +943,7 @@ Pre-signed URL方式はサーバー経由方式より高速だが、モバイル
 | 複数画像で時間がかかる | 並列アップロード |
 | 通信が不安定 | リトライ処理 |
 
-### 12.3 推奨：クライアント側での画像圧縮
+### 15.3 推奨：クライアント側での画像圧縮
 
 アップロード前にリサイズすることで、通信時間を大幅に短縮できる。
 
@@ -700,7 +980,7 @@ const compressedImage = await compressImage(originalFile);
 // 元ファイル: 5MB → 圧縮後: 約300-500KB
 ```
 
-### 12.4 推奨：プログレスバー表示
+### 15.4 推奨：プログレスバー表示
 
 `XMLHttpRequest`を使用することで、アップロード進捗を取得できる。
 
@@ -750,7 +1030,7 @@ await uploadWithProgress(presignedUrl, compressedImage, setProgress);
 // UIでprogressを表示: <ProgressBar value={progress} />
 ```
 
-### 12.5 推奨：複数画像の並列アップロード
+### 15.5 推奨：複数画像の並列アップロード
 
 複数画像は`Promise.all`で並列処理することで、総アップロード時間を短縮できる。
 
@@ -786,7 +1066,7 @@ async function uploadMultipleImages(
 }
 ```
 
-### 12.6 推奨：リトライ処理
+### 15.6 推奨：リトライ処理
 
 モバイル回線の不安定さに対応するため、指数バックオフでリトライを実装する。
 
@@ -823,7 +1103,7 @@ async function withRetry<T>(
 const imageKey = await withRetry(() => uploadDishImage(file));
 ```
 
-### 12.7 完全な実装例
+### 15.7 完全な実装例
 
 上記の推奨事項をすべて組み込んだ実装例。
 
