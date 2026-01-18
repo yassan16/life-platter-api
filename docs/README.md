@@ -25,7 +25,8 @@ docs/
 │       └── s3-image-upload.md
 └── setup/                    # 環境構築・運用
     ├── commands.md
-    └── docker-compose-startup-flow.md
+    ├── docker-compose-startup-flow.md
+    └── environment-variables.md
 ```
 
 ## 各フォルダの概要
@@ -74,6 +75,12 @@ docs/
   - データベース接続フロー
   - リクエストフロー (Nginx → FastAPI → MySQL)
   - Docker起動順序とシーケンス図
+- 環境変数設定ガイド: [setup/environment-variables.md](setup/environment-variables.md)
+  - pydantic-settingsによる型安全な環境変数管理
+  - 全環境変数の詳細説明（Database、JWT、AWS/S3など）
+  - 環境別設定例（ローカル開発・本番）
+  - セキュリティガイドライン（JWT_SECRET_KEY生成、ファイル権限）
+  - トラブルシューティング
 
 ### データベース (`docs/database/`)
 - Alembicマイグレーションセットアップ: [database/migration-guide.md](database/migration-guide.md)
