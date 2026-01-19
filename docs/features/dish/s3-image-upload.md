@@ -572,65 +572,54 @@ Pre-signed URL生成と画像コピー/削除用:
   "Version": "2012-10-17",
   "Statement": [
     {
-      "Sid": "PresignedUrlForTempUpload",
+      "Sid": "AllowListBucketAndCheckExistence",
       "Effect": "Allow",
-      "Action": ["s3:PutObject"],
-      "Resource": "arn:aws:s3:::bucket-name/images/dishes/temp/*",
-      "Condition": {
-        "StringEquals": {
-          "s3:x-amz-content-type": ["image/jpeg", "image/png", "image/webp"]
-        }
-      }
+      "Action": ["s3:ListBucket"],
+      "Resource": "arn:aws:s3:::life-platter"
     },
     {
-      "Sid": "CopyAndDeleteForDishImages",
+      "Sid": "ManageDishImages",
       "Effect": "Allow",
-      "Action": ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"],
-      "Resource": "arn:aws:s3:::bucket-name/images/dishes/*"
-    },
-    {
-      "Sid": "HeadObjectCheck",
-      "Effect": "Allow",
-      "Action": ["s3:HeadObject"],
-      "Resource": "arn:aws:s3:::bucket-name/images/dishes/temp/*"
+      "Action": ["s3:PutObject", "s3:GetObject", "s3:DeleteObject"],
+      "Resource": "arn:aws:s3:::life-platter/images/dishes/*"
     }
   ]
 }
 ```
 
+**ポリシー名の例**: `LifePlatterS3AccessPolicy`
+
 **各Statementの解説**
 
-**Statement 1: PresignedUrlForTempUpload**
+**Statement 1: AllowListBucketAndCheckExistence**
 
-- **目的**: Pre-signed URL生成のための権限
-- **権限**: `s3:PutObject`（アップロード権限）
-- **対象**: `images/dishes/temp/*`（一時保存領域のみ）
+- **目的**: バケット内オブジェクトの一覧取得と存在確認
+- **権限**: `s3:ListBucket`（バケット内オブジェクト一覧取得）
+- **対象**: `life-platter`バケット全体
 
-**なぜs3:PutObjectのみか**
+**なぜListBucketが必要か**
 
-- Pre-signed URL生成時、boto3はローカルで署名を計算するだけで、実際にS3にリクエストは発行しません
-- しかし、署名には「この権限を持っている」という証明が含まれるため、IAMロールに`s3:PutObject`権限が必要です
-- 実際のアップロードはクライアントが行うため、EC2からS3への通信は発生しません
+- 孤立ファイルのクリーンアップバッチ処理で、S3内のオブジェクト一覧を取得する際に必要
+- バケットレベルの操作であるため、Resourceはバケット名のみ（`/*`なし）
 
-**なぜConditionが必要か**
+**Statement 2: ManageDishImages**
 
-- `s3:x-amz-content-type`で画像形式（JPEG、PNG、WebP）のみに制限
-- これにより、実行可能ファイルやスクリプトなどのアップロードを防止
-- セキュリティ上、許可するファイルタイプを明示的に制限することが重要
-
-**Statement 2: CopyAndDeleteForDishImages**
-
-- **目的**: 画像のコピーと削除（料理登録・更新・削除時）
-- **権限**: `s3:GetObject`（読み取り）、`s3:PutObject`（書き込み）、`s3:DeleteObject`（削除）
+- **目的**: 画像のアップロード、取得、コピー、削除
+- **権限**: `s3:PutObject`（書き込み）、`s3:GetObject`（読み取り）、`s3:DeleteObject`（削除）
 - **対象**: `images/dishes/*`（一時領域と正式パスの両方）
 
 **各権限が必要な理由**
 
 | アクション | 用途 | タイミング |
 |-----------|------|-----------|
-| s3:GetObject | コピー元の読み取り | 一時パスから正式パスへのコピー時 |
-| s3:PutObject | コピー先への書き込み | 正式パスへの保存時 |
+| s3:PutObject | Pre-signed URL生成、コピー先への書き込み | アップロード時、正式パスへの保存時 |
+| s3:GetObject | コピー元の読み取り、画像存在確認（HeadObject） | 一時パスから正式パスへのコピー時、存在確認時 |
 | s3:DeleteObject | 不要ファイルの削除 | 一時ファイル削除、料理更新・削除時の旧画像削除 |
+
+**HeadObjectについて**
+
+- `HeadObject` APIは`s3:GetObject`アクションで認証されます（`s3:HeadObject`というIAMアクションは存在しません）
+- `HeadObject`はファイル本体を取得せず、メタデータのみを取得するため軽量
 
 **S3内コピーの仕組み**
 
@@ -638,23 +627,10 @@ Pre-signed URL生成と画像コピー/削除用:
 - EC2のメモリやディスクは使用しないため、大容量ファイルでも高速
 - GetObjectとPutObjectの権限が両方必要です
 
-**Statement 3: HeadObjectCheck**
-
-- **目的**: 画像の存在確認（料理登録前のバリデーション）
-- **権限**: `s3:HeadObject`（メタデータ取得）
-- **対象**: `images/dishes/temp/*`（一時保存領域のみ）
-
-**なぜHeadObjectのみか**
-
-- `HeadObject`はファイル本体を取得せず、メタデータ（ファイルサイズ、Content-Type、最終更新日時など）のみを取得
-- `GetObject`と比べてデータ転送量が少なく、軽量で高速
-- 存在確認にはメタデータで十分なため、コスト効率が良い
-
 **セキュリティポイント**
 
-- 各Statementで対象リソースを明確に分離（一時領域 vs 正式パス）
+- 対象リソースを`images/dishes/*`に限定し、他のパスへのアクセスを防止
 - 必要最小限の権限のみを付与（最小権限の原則）
-- Conditionを活用してファイルタイプを制限
 
 #### 7.3.4 管理者用IAMポリシー（コンソール/CLI操作）
 
@@ -692,10 +668,11 @@ EC2からS3に対して行う各操作と、それに必要なIAMポリシー権
 | EC2からの操作 | 必要なS3アクション | 対象リソース | 実装状況 | 説明 |
 |-------------|------------------|------------|---------|------|
 | Pre-signed URL生成 | s3:PutObject（署名用） | images/dishes/temp/* | ✅ 実装済み | 署名生成はローカル処理、S3リクエストなし |
-| 画像存在確認 | s3:HeadObject | images/dishes/temp/* | ❌ TODO | メタデータ取得のみ、軽量 |
+| 画像存在確認 | s3:GetObject（HeadObject用） | images/dishes/temp/* | ❌ TODO | メタデータ取得のみ、軽量 |
 | 正式パスにコピー | s3:GetObject, s3:PutObject | images/dishes/* | ❌ TODO | S3内サーバーサイドコピー、EC2経由なし |
 | 一時ファイル削除 | s3:DeleteObject | images/dishes/temp/* | ❌ TODO | 料理登録後の不要ファイル削除 |
 | 旧画像削除 | s3:DeleteObject | images/dishes/{dish_id}/* | ❌ TODO | 料理更新・削除時の旧ファイル削除 |
+| オブジェクト一覧取得 | s3:ListBucket | life-platter（バケット） | ❌ TODO | 孤立ファイルクリーンアップバッチ用 |
 
 **重要な注意事項**
 
