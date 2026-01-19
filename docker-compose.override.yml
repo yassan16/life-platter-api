@@ -1,6 +1,10 @@
 # ローカル開発用設定
 # docker compose up で自動的に読み込まれる
 services:
+  db:
+    env_file:
+      - .env.local
+
   app:
     volumes:
       - .:/src

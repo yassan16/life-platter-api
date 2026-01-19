@@ -135,3 +135,36 @@ docker compose up -d --build
 
 - Dockerfile で `--reload` オプションが有効なため、コード変更時は自動的にリロードされます
 - ただし、requirements.txt の変更時は再ビルドが必要です
+
+---
+
+## EC2 本番デプロイ
+
+### 起動
+
+```bash
+# 本番環境として起動
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+
+# 再ビルドして起動
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+```
+
+### 確認
+
+```bash
+# ログ確認
+docker compose logs -f app
+
+# 環境変数確認
+docker compose exec db env | grep MYSQL
+
+# ワーカー数確認（4ワーカーで起動していることを確認）
+docker compose logs app | grep workers
+```
+
+### 停止
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.prod.yml down
+```

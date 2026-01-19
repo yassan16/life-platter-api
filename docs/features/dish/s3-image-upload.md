@@ -28,7 +28,7 @@ Pre-signed URLは、この問題を**一時的な署名をURLに埋め込む**�
 ```
 署名付きURL = S3のURL + 一時的な認証情報（署名）
 
-https://bucket.s3.amazonaws.com/dishes/temp/xxx.jpg
+https://bucket.s3.amazonaws.com/images/dishes/temp/xxx.jpg
   ?X-Amz-Algorithm=AWS4-HMAC-SHA256
   &X-Amz-Credential=AKIA.../s3/aws4_request
   &X-Amz-Date=20240114T...
@@ -70,7 +70,7 @@ Pre-signed URL方式:
 | 有効期限 | 5分 | URL漏洩しても短時間で無効化 |
 | HTTPメソッド | PUTのみ | 読み取り・削除は不可 |
 | Content-Type | 指定必須 | 画像以外アップロード不可 |
-| パス | `dishes/temp/*`のみ | 他のパスには書き込み不可 |
+| パス | `images/dishes/temp/*`のみ | 他のパスには書き込み不可 |
 
 ---
 
@@ -82,8 +82,8 @@ Pre-signed URL方式:
 
 **理想の画像パス構造:**
 ```
-dishes/{dish_id}/{display_order}.jpg
-例: dishes/12345/1.jpg
+images/dishes/{dish_id}/{display_order}.jpg
+例: images/dishes/12345/1.jpg
 ```
 
 **問題:**
@@ -95,7 +95,7 @@ dishes/{dish_id}/{display_order}.jpg
 ```
 ❌ 不可能なフロー:
   1. dish_idを取得する        ← まだ料理が存在しない！
-  2. S3にアップロード: dishes/{dish_id}/1.jpg
+  2. S3にアップロード: images/dishes/{dish_id}/1.jpg
   3. 料理をDBに登録
 ```
 
@@ -114,9 +114,9 @@ dishes/{dish_id}/{display_order}.jpg
 **フロー:**
 ```
 ✅ 実際のフロー:
-  1. S3にアップロード: dishes/temp/{uuid}.jpg    ← 一時保存
+  1. S3にアップロード: images/dishes/temp/{uuid}.jpg    ← 一時保存
   2. 料理をDBに登録 → dish_idが確定
-  3. S3内でコピー: dishes/temp/{uuid}.jpg → dishes/{dish_id}/1.jpg
+  3. S3内でコピー: images/dishes/temp/{uuid}.jpg → images/dishes/{dish_id}/1.jpg
   4. 一時ファイルを削除（オプション）
 ```
 
@@ -125,7 +125,7 @@ dishes/{dish_id}/{display_order}.jpg
 |------|------|
 | dish_id不要 | アップロード時点でdish_idが不要 |
 | 整合性確保 | 料理登録が失敗しても、一時ファイルは24時間後に自動削除される |
-| パス一貫性 | 最終的には理想のパス構造 `dishes/{dish_id}/` を維持 |
+| パス一貫性 | 最終的には理想のパス構造 `images/dishes/{dish_id}/` を維持 |
 
 ### 2.4 詳細フロー図
 
@@ -134,27 +134,27 @@ dishes/{dish_id}/{display_order}.jpg
 ```
 ステップ1: 画像アップロード
 ┌────────────────────────────────┐
-│ S3: dishes/temp/abc-123.jpg    │ ← 一時保存
+│ S3: images/dishes/temp/abc-123.jpg    │ ← 一時保存
 │ DB: （料理未登録）              │
 └────────────────────────────────┘
 
 ステップ2: 料理登録
 ┌────────────────────────────────┐
-│ S3: dishes/temp/abc-123.jpg    │
+│ S3: images/dishes/temp/abc-123.jpg    │
 │ DB: INSERT INTO dishes         │
 │     → dish_id = 550 確定       │ ← dish_idが生成される
 └────────────────────────────────┘
 
 ステップ3: 正式パスにコピー
 ┌────────────────────────────────┐
-│ S3: dishes/temp/abc-123.jpg    │ ← 元ファイル残存
-│     dishes/550/1.jpg           │ ← コピー完了
+│ S3: images/dishes/temp/abc-123.jpg    │ ← 元ファイル残存
+│     images/dishes/550/1.jpg           │ ← コピー完了
 │ DB: dish_id=550, image_key=... │
 └────────────────────────────────┘
 
 ステップ4: 一時ファイル削除（24時間後に自動 or 即座に削除）
 ┌────────────────────────────────┐
-│ S3: dishes/550/1.jpg           │ ← 正式パスのみ残る
+│ S3: images/dishes/550/1.jpg           │ ← 正式パスのみ残る
 │ DB: dish_id=550, image_key=... │
 └────────────────────────────────┘
 ```
@@ -236,7 +236,7 @@ async def check_object_exists(bucket: str, key: str) -> bool:
 
     Args:
         bucket: S3バケット名
-        key: オブジェクトキー（例: dishes/temp/abc-123.jpg）
+        key: オブジェクトキー（例: images/dishes/temp/abc-123.jpg）
 
     Returns:
         True: オブジェクトが存在する
@@ -272,7 +272,7 @@ async def check_object_exists(bucket: str, key: str) -> bool:
    - クライアントアップロード時点ではdish_idを含むパスを使えない
 
 2. **画像パスの一貫性**
-   - すべての画像を`dishes/{dish_id}/`配下に統一
+   - すべての画像を`images/dishes/{dish_id}/`配下に統一
    - CloudFront URL生成やバッチ処理がシンプルになる
 
 3. **temp領域の自動クリーンアップとの連携**
@@ -293,8 +293,8 @@ async def copy_to_permanent(
 
     Args:
         bucket: S3バケット名
-        source_key: コピー元キー（例: dishes/temp/abc-123.jpg）
-        destination_key: コピー先キー（例: dishes/550/1.jpg）
+        source_key: コピー元キー（例: images/dishes/temp/abc-123.jpg）
+        destination_key: コピー先キー（例: images/dishes/550/1.jpg）
     """
     s3_client = boto3.client('s3')
 
@@ -426,8 +426,8 @@ Content-Type: application/json
 **成功: 200 OK**
 ```json
 {
-  "upload_url": "https://bucket.s3.ap-northeast-1.amazonaws.com/dishes/temp/...",
-  "image_key": "dishes/temp/550e8400-e29b-41d4-a716-446655440000.jpg",
+  "upload_url": "https://bucket.s3.ap-northeast-1.amazonaws.com/images/dishes/temp/...",
+  "image_key": "images/dishes/temp/550e8400-e29b-41d4-a716-446655440000.jpg",
   "expires_in": 300
 }
 ```
@@ -464,7 +464,7 @@ AWS公式ベストプラクティスに基づく設計。
 ### 7.2 S3バケット設定
 
 ```
-dishes/
+images/dishes/
 ├── temp/           # 一時アップロード領域（TTL: 24時間）
 │   └── {uuid}.jpg
 └── {dish_id}/      # 正式保存領域
@@ -575,7 +575,7 @@ Pre-signed URL生成と画像コピー/削除用:
       "Sid": "PresignedUrlForTempUpload",
       "Effect": "Allow",
       "Action": ["s3:PutObject"],
-      "Resource": "arn:aws:s3:::bucket-name/dishes/temp/*",
+      "Resource": "arn:aws:s3:::bucket-name/images/dishes/temp/*",
       "Condition": {
         "StringEquals": {
           "s3:x-amz-content-type": ["image/jpeg", "image/png", "image/webp"]
@@ -586,13 +586,13 @@ Pre-signed URL生成と画像コピー/削除用:
       "Sid": "CopyAndDeleteForDishImages",
       "Effect": "Allow",
       "Action": ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"],
-      "Resource": "arn:aws:s3:::bucket-name/dishes/*"
+      "Resource": "arn:aws:s3:::bucket-name/images/dishes/*"
     },
     {
       "Sid": "HeadObjectCheck",
       "Effect": "Allow",
       "Action": ["s3:HeadObject"],
-      "Resource": "arn:aws:s3:::bucket-name/dishes/temp/*"
+      "Resource": "arn:aws:s3:::bucket-name/images/dishes/temp/*"
     }
   ]
 }
@@ -604,7 +604,7 @@ Pre-signed URL生成と画像コピー/削除用:
 
 - **目的**: Pre-signed URL生成のための権限
 - **権限**: `s3:PutObject`（アップロード権限）
-- **対象**: `dishes/temp/*`（一時保存領域のみ）
+- **対象**: `images/dishes/temp/*`（一時保存領域のみ）
 
 **なぜs3:PutObjectのみか**
 
@@ -622,7 +622,7 @@ Pre-signed URL生成と画像コピー/削除用:
 
 - **目的**: 画像のコピーと削除（料理登録・更新・削除時）
 - **権限**: `s3:GetObject`（読み取り）、`s3:PutObject`（書き込み）、`s3:DeleteObject`（削除）
-- **対象**: `dishes/*`（一時領域と正式パスの両方）
+- **対象**: `images/dishes/*`（一時領域と正式パスの両方）
 
 **各権限が必要な理由**
 
@@ -642,7 +642,7 @@ Pre-signed URL生成と画像コピー/削除用:
 
 - **目的**: 画像の存在確認（料理登録前のバリデーション）
 - **権限**: `s3:HeadObject`（メタデータ取得）
-- **対象**: `dishes/temp/*`（一時保存領域のみ）
+- **対象**: `images/dishes/temp/*`（一時保存領域のみ）
 
 **なぜHeadObjectのみか**
 
@@ -691,11 +691,11 @@ EC2からS3に対して行う各操作と、それに必要なIAMポリシー権
 
 | EC2からの操作 | 必要なS3アクション | 対象リソース | 実装状況 | 説明 |
 |-------------|------------------|------------|---------|------|
-| Pre-signed URL生成 | s3:PutObject（署名用） | dishes/temp/* | ✅ 実装済み | 署名生成はローカル処理、S3リクエストなし |
-| 画像存在確認 | s3:HeadObject | dishes/temp/* | ❌ TODO | メタデータ取得のみ、軽量 |
-| 正式パスにコピー | s3:GetObject, s3:PutObject | dishes/* | ❌ TODO | S3内サーバーサイドコピー、EC2経由なし |
-| 一時ファイル削除 | s3:DeleteObject | dishes/temp/* | ❌ TODO | 料理登録後の不要ファイル削除 |
-| 旧画像削除 | s3:DeleteObject | dishes/{dish_id}/* | ❌ TODO | 料理更新・削除時の旧ファイル削除 |
+| Pre-signed URL生成 | s3:PutObject（署名用） | images/dishes/temp/* | ✅ 実装済み | 署名生成はローカル処理、S3リクエストなし |
+| 画像存在確認 | s3:HeadObject | images/dishes/temp/* | ❌ TODO | メタデータ取得のみ、軽量 |
+| 正式パスにコピー | s3:GetObject, s3:PutObject | images/dishes/* | ❌ TODO | S3内サーバーサイドコピー、EC2経由なし |
+| 一時ファイル削除 | s3:DeleteObject | images/dishes/temp/* | ❌ TODO | 料理登録後の不要ファイル削除 |
+| 旧画像削除 | s3:DeleteObject | images/dishes/{dish_id}/* | ❌ TODO | 料理更新・削除時の旧ファイル削除 |
 
 **重要な注意事項**
 
@@ -799,7 +799,7 @@ presigned_url = s3_client.generate_presigned_url(
     'put_object',
     Params={
         'Bucket': 'your-bucket-name',
-        'Key': 'dishes/temp/example.jpg',
+        'Key': 'images/dishes/temp/example.jpg',
         'ContentType': 'image/jpeg'
     },
     ExpiresIn=300
@@ -967,7 +967,7 @@ async function createDishWithImages(
 ### サーバー側の整合性チェック
 
 料理登録時:
-1. `image_key` が `dishes/temp/` で始まることを検証
+1. `image_key` が `images/dishes/temp/` で始まることを検証
 2. S3に該当オブジェクトが存在することを確認
 3. Content-Typeがサポート形式であることを確認
 
@@ -997,8 +997,8 @@ async function createDishWithImages(
 
 ```
 S3状態:
-  dishes/temp/abc123.jpg     ← 一時ファイル（残留）
-  dishes/{dish_id}/1.jpg     ← 正式パス（孤立ファイル）
+  images/dishes/temp/abc123.jpg     ← 一時ファイル（残留）
+  images/dishes/{dish_id}/1.jpg     ← 正式パス（孤立ファイル）
 
 DB状態:
   dishes: レコードなし
@@ -1015,8 +1015,8 @@ DB状態:
 
 ```
 S3状態:
-  dishes/{dish_id}/1.jpg     ← 新画像（正常）
-  dishes/{dish_id}/2.jpg     ← 旧画像（残留・ゴミ）
+  images/dishes/{dish_id}/1.jpg     ← 新画像（正常）
+  images/dishes/{dish_id}/2.jpg     ← 旧画像（残留・ゴミ）
 
 DB状態:
   dish_images: 新画像のみ参照
@@ -1033,7 +1033,7 @@ DB状態:
 async def cleanup_orphan_images():
     """孤立した画像ファイルを削除するバッチ処理"""
     # 1. S3から正式パス配下のオブジェクト一覧を取得
-    s3_objects = await list_s3_objects(prefix="dishes/")
+    s3_objects = await list_s3_objects(prefix="images/dishes/")
 
     # 2. dish_imagesテーブルから全image_keyを取得
     db_image_keys = await get_all_image_keys()
@@ -1042,7 +1042,7 @@ async def cleanup_orphan_images():
     orphan_keys = [
         obj for obj in s3_objects
         if obj not in db_image_keys
-        and not obj.startswith("dishes/temp/")  # 一時領域は除外
+        and not obj.startswith("images/dishes/temp/")  # 一時領域は除外
     ]
 
     # 4. 孤立ファイルを削除（作成から24時間以上経過したもののみ）
@@ -1065,7 +1065,7 @@ async def cleanup_orphan_images():
 
 ### 自動クリーンアップ（推奨）
 
-S3ライフサイクルルールで `dishes/temp/` 配下を24時間後に自動削除。
+S3ライフサイクルルールで `images/dishes/temp/` 配下を24時間後に自動削除。
 
 ```json
 {
@@ -1074,7 +1074,7 @@ S3ライフサイクルルールで `dishes/temp/` 配下を24時間後に自動
       "ID": "DeleteTempImages",
       "Status": "Enabled",
       "Filter": {
-        "Prefix": "dishes/temp/"
+        "Prefix": "images/dishes/temp/"
       },
       "Expiration": {
         "Days": 1
@@ -1135,7 +1135,7 @@ S3への直接アクセスを禁止し、CloudFront経由のみ許可。
         "Service": "cloudfront.amazonaws.com"
       },
       "Action": "s3:GetObject",
-      "Resource": "arn:aws:s3:::bucket-name/dishes/*",
+      "Resource": "arn:aws:s3:::bucket-name/images/dishes/*",
       "Condition": {
         "StringEquals": {
           "AWS:SourceArn": "arn:aws:cloudfront::account-id:distribution/distribution-id"
@@ -1184,7 +1184,7 @@ def generate_signed_url(image_key: str) -> str:
   "images": [
     {
       "id": "...",
-      "image_url": "https://d1234567890.cloudfront.net/dishes/550e8400/1.jpg",
+      "image_url": "https://d1234567890.cloudfront.net/images/dishes/550e8400/1.jpg",
       "display_order": 1
     }
   ]

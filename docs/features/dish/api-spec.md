@@ -61,11 +61,11 @@ Content-Type: application/json
   "category_id": "550e8400-e29b-41d4-a716-446655440001",
   "images": [
     {
-      "image_key": "dishes/temp/abc123.jpg",
+      "image_key": "images/dishes/temp/abc123.jpg",
       "display_order": 1
     },
     {
-      "image_key": "dishes/temp/def456.jpg",
+      "image_key": "images/dishes/temp/def456.jpg",
       "display_order": 2
     }
   ]
@@ -96,12 +96,12 @@ Content-Type: application/json
   "images": [
     {
       "id": "660e8400-e29b-41d4-a716-446655440001",
-      "image_url": "https://d1234567890.cloudfront.net/dishes/550e8400-e29b-41d4-a716-446655440000/1.jpg",
+      "image_url": "https://d1234567890.cloudfront.net/images/dishes/550e8400-e29b-41d4-a716-446655440000/1.jpg",
       "display_order": 1
     },
     {
       "id": "660e8400-e29b-41d4-a716-446655440002",
-      "image_url": "https://d1234567890.cloudfront.net/dishes/550e8400-e29b-41d4-a716-446655440000/2.jpg",
+      "image_url": "https://d1234567890.cloudfront.net/images/dishes/550e8400-e29b-41d4-a716-446655440000/2.jpg",
       "display_order": 2
     }
   ],
@@ -132,7 +132,7 @@ Content-Type: application/json
 
 #### S3画像処理フロー
 
-1. クライアントが事前にS3の一時領域（`dishes/temp/`）に画像をアップロード
+1. クライアントが事前にS3の一時領域（`images/dishes/temp/`）に画像をアップロード
 2. APIリクエストで`image_key`（一時キー）を送信
 3. サーバー側処理:
 
@@ -144,7 +144,7 @@ Content-Type: application/json
    **Step 2: S3操作（トランザクション外）**
    - S3一時領域の画像存在確認
    - 失敗時 → `422 S3_OBJECT_NOT_FOUND`（DBに影響なし）
-   - 正式パス（`dishes/{dish_id}/{display_order}.jpg`）にコピー
+   - 正式パス（`images/dishes/{dish_id}/{display_order}.jpg`）にコピー
    - 失敗時 → `500 Internal Error`（DBに影響なし、一時ファイルは24h後に自動削除）
 
    **Step 3: DBトランザクション**
@@ -228,7 +228,7 @@ LIMIT :limit + 1  -- 次ページ有無判定用
         "id": "550e8400-e29b-41d4-a716-446655440001",
         "name": "和食"
       },
-      "thumbnail_url": "https://d1234567890.cloudfront.net/dishes/550e8400/1.jpg",
+      "thumbnail_url": "https://d1234567890.cloudfront.net/images/dishes/550e8400/1.jpg",
       "image_count": 2,
       "created_at": "2024-01-15T10:30:00Z"
     }
@@ -351,12 +351,12 @@ Authorization: Bearer <access_token>
   "images": [
     {
       "id": "660e8400-e29b-41d4-a716-446655440001",
-      "image_url": "https://d1234567890.cloudfront.net/dishes/550e8400/1.jpg",
+      "image_url": "https://d1234567890.cloudfront.net/images/dishes/550e8400/1.jpg",
       "display_order": 1
     },
     {
       "id": "660e8400-e29b-41d4-a716-446655440002",
-      "image_url": "https://d1234567890.cloudfront.net/dishes/550e8400/2.jpg",
+      "image_url": "https://d1234567890.cloudfront.net/images/dishes/550e8400/2.jpg",
       "display_order": 2
     }
   ],
@@ -399,7 +399,7 @@ Content-Type: application/json
   "category_id": "550e8400-e29b-41d4-a716-446655440002",
   "images_to_add": [
     {
-      "image_key": "dishes/temp/new123.jpg"
+      "image_key": "images/dishes/temp/new123.jpg"
     }
   ],
   "images_to_delete": [
@@ -449,7 +449,7 @@ POST /dishes と同じ形式
 - `images_to_add`がある場合のみ実行
 - S3一時領域の画像存在確認
 - 失敗時 → `422 S3_OBJECT_NOT_FOUND`（DBに影響なし）
-- 正式パス（`dishes/{dish_id}/{display_order}.jpg`）にコピー
+- 正式パス（`images/dishes/{dish_id}/{display_order}.jpg`）にコピー
 - display_order = 既存の最大値 + 1, +2, ... で採番
 - 失敗時 → `500 Internal Error`（DBに影響なし）
 

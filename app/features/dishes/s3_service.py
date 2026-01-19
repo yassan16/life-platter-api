@@ -47,7 +47,7 @@ class S3Service:
             upload_url, image_key, expires_in を含む辞書
         """
         extension = CONTENT_TYPE_TO_EXTENSION.get(content_type, "jpg")
-        image_key = f"dishes/temp/{uuid.uuid4()}.{extension}"
+        image_key = f"images/dishes/temp/{uuid.uuid4()}.{extension}"
 
         if self.s3_client is None:
             # スタブモード（S3_BUCKET_NAMEが未設定の場合）
@@ -78,7 +78,7 @@ class S3Service:
         S3オブジェクトの存在確認
 
         Args:
-            image_key: S3オブジェクトキー（例: dishes/temp/abc123.jpg）
+            image_key: S3オブジェクトキー（例: images/dishes/temp/abc123.jpg）
 
         Returns:
             bool: オブジェクトが存在する場合True
@@ -94,8 +94,8 @@ class S3Service:
         一時ファイルを正式パスにコピー
 
         Args:
-            temp_key: 一時領域のキー（例: dishes/temp/abc123.jpg）
-            permanent_key: 正式パス（例: dishes/{dish_id}/1.jpg）
+            temp_key: 一時領域のキー（例: images/dishes/temp/abc123.jpg）
+            permanent_key: 正式パス（例: images/dishes/{dish_id}/1.jpg）
 
         Returns:
             bool: コピー成功の場合True
@@ -149,9 +149,9 @@ class S3Service:
             extension: ファイル拡張子
 
         Returns:
-            str: 正式パスのキー（例: dishes/{dish_id}/1.jpg）
+            str: 正式パスのキー（例: images/dishes/{dish_id}/1.jpg）
         """
-        return f"dishes/{dish_id}/{display_order}.{extension}"
+        return f"images/dishes/{dish_id}/{display_order}.{extension}"
 
 
 # シングルトンインスタンス

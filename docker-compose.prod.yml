@@ -1,8 +1,13 @@
 # 本番環境（EC2）用設定
 # 使用方法: docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
 services:
+  db:
+    env_file:
+      - .env.production
+
   app:
     restart: always
     env_file:
       - .env.production
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "4"]
     # ソースコードのマウントは行わない（ビルド時にコピー済み）

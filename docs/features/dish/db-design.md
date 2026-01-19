@@ -48,7 +48,7 @@
 |--------|-----|------|------|
 | id | CHAR(36) | PK | UUID |
 | dish_id | CHAR(36) | FK, INDEX | dishes.id |
-| image_key | VARCHAR(200) | NOT NULL | S3オブジェクトキー（例: dishes/{dish_id}/1.jpg） |
+| image_key | VARCHAR(200) | NOT NULL | S3オブジェクトキー（例: images/dishes/{dish_id}/1.jpg） |
 | display_order | TINYINT | NOT NULL | 表示順序（1-3） |
 | created_at | DateTime | NOT NULL, DEFAULT NOW() | 作成日時 |
 
