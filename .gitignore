@@ -12,7 +12,6 @@ env/
 .env
 .env.local
 .env.production
-config.py
 
 # --- Docker (ローカルデータやログ) ---
 # docker-composeで volumes: - ./mysql_data:/var/lib/mysql とした場合用
