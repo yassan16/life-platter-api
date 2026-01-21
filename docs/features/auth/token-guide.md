@@ -315,7 +315,7 @@ Server → access_token(新規) + refresh_token(新規) → Client
 ┌─────────────────────────────────────────────────────────────┐
 │ 1. ログイン時                                                │
 ├─────────────────────────────────────────────────────────────┤
-│  Client → POST /auth/login → Server                         │
+│  Client → POST /api/users/login → Server                    │
 │  Server → access_token(30分) + refresh_token(7日) → Client   │
 │  Client: 両トークンをローカルに保存                            │
 │  Server: refresh_token をDBにハッシュ化して保存               │
@@ -324,18 +324,18 @@ Server → access_token(新規) + refresh_token(新規) → Client
 ┌─────────────────────────────────────────────────────────────┐
 │ 2. API呼び出し（通常時）                                      │
 ├─────────────────────────────────────────────────────────────┤
-│  Client → GET /users/me (Authorization: Bearer access_token) │
+│  Client → GET /api/users/me (Authorization: Bearer access_token) │
 │  Server → 署名検証（DB不要）→ 200 OK + ユーザー情報            │
 └─────────────────────────────────────────────────────────────┘
                               ↓
 ┌─────────────────────────────────────────────────────────────┐
 │ 3. アクセストークン期限切れ時                                  │
 ├─────────────────────────────────────────────────────────────┤
-│  Client → GET /users/me (Authorization: Bearer access_token) │
+│  Client → GET /api/users/me (Authorization: Bearer access_token) │
 │  Server → 401 Unauthorized (INVALID_TOKEN)                   │
 │                                                             │
 │  【リフレッシュ処理が発動】                                    │
-│  Client → POST /auth/refresh { refresh_token: "..." }        │
+│  Client → POST /api/users/refresh { refresh_token: "..." }   │
 │  Server → DB照会 → 新しい access_token + refresh_token       │
 │  Client: トークンを更新して元のAPIを再リクエスト                │
 └─────────────────────────────────────────────────────────────┘
@@ -343,7 +343,7 @@ Server → access_token(新規) + refresh_token(新規) → Client
 ┌─────────────────────────────────────────────────────────────┐
 │ 4. ログアウト時                                              │
 ├─────────────────────────────────────────────────────────────┤
-│  Client → POST /auth/logout (Authorization: Bearer token)    │
+│  Client → POST /api/users/logout (Authorization: Bearer token) │
 │  Server → refresh_token の revoked_at を更新（無効化）        │
 │  Client → ローカルのトークンを削除                             │
 └─────────────────────────────────────────────────────────────┘
