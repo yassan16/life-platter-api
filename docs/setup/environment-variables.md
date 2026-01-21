@@ -35,6 +35,21 @@ life_platter-apiでは、**pydantic-settings**を使用して環境変数を型�
 
 4. **.envファイル自動読み込み**: 環境ごとの設定切り替えが容易
 
+---
+
+## 目次
+
+1. [ファイル構成](#ファイル構成)
+2. [環境変数一覧](#環境変数一覧)
+3. [環境別の設定例](#環境別の設定例)
+4. [環境切り替え方法](#環境切り替え方法)
+5. [セキュリティガイドライン](#セキュリティガイドライン)
+6. [トラブルシューティング](#トラブルシューティング)
+7. [開発者向けメモ](#開発者向けメモ)
+8. [参考リンク](#参考リンク)
+
+---
+
 ## ファイル構成
 
 ```
@@ -159,17 +174,66 @@ CLOUDFRONT_DOMAIN=https://d1234567890.cloudfront.net
 
 ## 環境切り替え方法
 
+### Docker Composeの自動マージ仕様
+
+Docker Composeには、**`docker-compose.override.yml`を自動的にマージする標準仕様**があります。
+
+`docker compose up` を実行すると、以下の順序でファイルが**自動的に**読み込まれます：
+
+1. `docker-compose.yml`（または `compose.yml`）- ベース設定
+2. `docker-compose.override.yml`（または `compose.override.yml`）- 自動マージ
+
+**「override」という名前のファイルは、設定なしで自動的にマージされます。**
+
+```
+docker compose up
+       │
+       ▼
+┌─────────────────────────────────────────────────────┐
+│ 1. docker-compose.yml を読み込む（ベース設定）      │
+└─────────────────────────────────────────────────────┘
+       │
+       ▼
+┌─────────────────────────────────────────────────────┐
+│ 2. docker-compose.override.yml を自動マージ        │
+│    ※ "override" という名前は自動読み込み対象       │
+└─────────────────────────────────────────────────────┘
+       │
+       ▼
+┌─────────────────────────────────────────────────────┐
+│ 3. env_file: .env.local が各サービスに適用         │
+└─────────────────────────────────────────────────────┘
+```
+
+**確認方法**:
+
+```bash
+# マージ後の完全な設定を表示
+docker compose config
+
+# 読み込まれるサービス一覧を確認
+docker compose config --services
+```
+
+**参考**: [Docker公式ドキュメント - Merge Compose files](https://docs.docker.com/compose/how-tos/multiple-compose-files/merge/)
+
 ### ローカル開発
 
 ```bash
-# docker-compose.override.yml が自動的に .env.local を読み込む
+# docker-compose.override.yml が自動的にマージされ、.env.local を読み込む
 docker compose up
 ```
 
 `docker-compose.override.yml`の設定:
 ```yaml
 services:
-  api:
+  db:
+    env_file:
+      - .env.local  # ローカル開発用環境変数を読み込み
+
+  app:
+    volumes:
+      - .:/src      # ソースコードをマウント（ホットリロード用）
     env_file:
       - .env.local  # ローカル開発用環境変数を読み込み
 ```
@@ -177,16 +241,25 @@ services:
 ### 本番環境（EC2等）
 
 ```bash
-# .env.production を使用
+# -f オプションで明示的にファイルを指定することで、override.yml の自動読み込みを回避
 docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
 ```
+
+**ポイント**: `-f`オプションで明示的にファイルを指定すると、`docker-compose.override.yml`は読み込まれません。これにより、本番環境でローカル開発用の設定（ボリュームマウント等）が適用されることを防ぎます。
 
 `docker-compose.prod.yml`の設定:
 ```yaml
 services:
-  api:
+  db:
     env_file:
       - .env.production  # 本番用環境変数を読み込み
+
+  app:
+    restart: always
+    env_file:
+      - .env.production  # 本番用環境変数を読み込み
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "4"]
+    # ソースコードのマウントは行わない（ビルド時にコピー済み）
 ```
 
 ### 環境変数の優先順位
