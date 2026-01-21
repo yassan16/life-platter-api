@@ -3,12 +3,16 @@
 NOTE: S3_BUCKET_NAMEが未設定の場合はスタブモードで動作します。
 """
 
+import logging
 import uuid
 
 import boto3
 from botocore.config import Config
+from botocore.exceptions import ClientError
 
 from app.core.config import settings
+
+logger = logging.getLogger(__name__)
 
 
 CONTENT_TYPE_TO_EXTENSION = {
@@ -86,8 +90,13 @@ class S3Service:
         if self.s3_client is None:
             # スタブモード: 常にTrueを返す
             return True
-        # TODO: boto3.client('s3').head_object(Bucket=bucket, Key=image_key)
-        return True
+        try:
+            self.s3_client.head_object(Bucket=self.bucket_name, Key=image_key)
+            return True
+        except ClientError as e:
+            if e.response["Error"]["Code"] == "404":
+                return False
+            raise
 
     def copy_to_permanent(self, temp_key: str, permanent_key: str) -> bool:
         """
@@ -103,7 +112,14 @@ class S3Service:
         if self.s3_client is None:
             # スタブモード: 常にTrueを返す
             return True
-        # TODO: s3_client.copy_object(...)
+        copy_source = {"Bucket": self.bucket_name, "Key": temp_key}
+        self.s3_client.copy_object(
+            CopySource=copy_source,
+            Bucket=self.bucket_name,
+            Key=permanent_key,
+            MetadataDirective="COPY",
+            ServerSideEncryption="AES256",
+        )
         return True
 
     def delete_object(self, image_key: str) -> bool:
@@ -119,8 +135,12 @@ class S3Service:
         if self.s3_client is None:
             # スタブモード: 常にTrueを返す
             return True
-        # TODO: s3_client.delete_object(Bucket=bucket, Key=image_key)
-        return True
+        try:
+            self.s3_client.delete_object(Bucket=self.bucket_name, Key=image_key)
+            return True
+        except Exception as e:
+            logger.warning(f"Failed to delete S3 object: {image_key}, error: {e}")
+            return False
 
     def generate_image_url(self, image_key: str) -> str:
         """
