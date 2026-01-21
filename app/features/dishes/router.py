@@ -33,7 +33,7 @@ from app.features.dishes.exceptions import (
 )
 
 
-router = APIRouter(prefix="/dishes", tags=["Dishes"])
+router = APIRouter()
 
 
 @router.post("", response_model=DishResponse, status_code=status.HTTP_201_CREATED)

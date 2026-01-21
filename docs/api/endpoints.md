@@ -58,20 +58,26 @@
 ## URL設計パターン
 
 ### ルーティング規則
-- 機能ごとに prefix を設定: `/cooking/`, `/ingredients/`, `/recipes/`, etc.
-- ルーター登録は `main.py` で `app.include_router()` を使用
+- 全てのAPIエンドポイントは `/api` プレフィックス配下に配置
+- 統合ルーター `app/api/__init__.py` で機能ごとのルーターを集約
+- 機能ごとに prefix を設定: `/api/users/`, `/api/dishes/`, `/api/ingredients/`, etc.
 - Swagger UI での分類には `tags` パラメータを使用
 
 ### 例
 ```python
-# main.py
-from app.features.cooking.router import router as cooking_router
+# app/api/__init__.py
+from fastapi import APIRouter
+from app.features.users.router import router as users_router
+from app.features.dishes.router import router as dishes_router
 
-app.include_router(
-    cooking_router,
-    prefix="/cooking",
-    tags=["Cooking"]
-)
+api_router = APIRouter()
+api_router.include_router(users_router, prefix="/users", tags=["Users"])
+api_router.include_router(dishes_router, prefix="/dishes", tags=["Dishes"])
+
+# main.py
+from app.api import api_router
+
+app.include_router(api_router, prefix="/api")
 ```
 
 ---
@@ -86,16 +92,10 @@ app.include_router(
 
 ## 今後実装予定のエンドポイント
 
-### 料理関連
-- `POST /cooking/` - 新規料理の登録
-- `GET /cooking/{id}` - 料理詳細の取得
-- `PUT /cooking/{id}` - 料理情報の更新
-- `DELETE /cooking/{id}` - 料理の削除
-
 ### 食材関連
-- `GET /ingredients/` - 食材一覧
-- `POST /ingredients/` - 食材登録
+- `GET /api/ingredients/` - 食材一覧
+- `POST /api/ingredients/` - 食材登録
 
 ### レシピ関連
-- `GET /recipes/` - レシピ一覧
-- `POST /recipes/` - レシピ登録
+- `GET /api/recipes/` - レシピ一覧
+- `POST /api/recipes/` - レシピ登録

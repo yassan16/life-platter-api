@@ -24,7 +24,7 @@ Authorization: Bearer <access_token>
 ### ベースパス
 
 ```
-/dishes
+/api/dishes
 ```
 
 ---
@@ -33,17 +33,17 @@ Authorization: Bearer <access_token>
 
 | メソッド | パス | 説明 | 認証 |
 |---------|------|------|:----:|
-| POST | `/dishes` | 料理登録 | 必要 |
-| GET | `/dishes` | 料理一覧取得 | 必要 |
-| GET | `/dishes/{id}` | 料理詳細取得 | 必要 |
-| PUT | `/dishes/{id}` | 料理更新 | 必要 |
-| DELETE | `/dishes/{id}` | 料理削除（論理削除） | 必要 |
+| POST | `/api/dishes` | 料理登録 | 必要 |
+| GET | `/api/dishes` | 料理一覧取得 | 必要 |
+| GET | `/api/dishes/{id}` | 料理詳細取得 | 必要 |
+| PUT | `/api/dishes/{id}` | 料理更新 | 必要 |
+| DELETE | `/api/dishes/{id}` | 料理削除（論理削除） | 必要 |
 
 ---
 
 ## 4. 各エンドポイント詳細
 
-### 4.1 POST /dishes - 料理登録
+### 4.1 POST /api/dishes - 料理登録
 
 #### リクエスト
 
@@ -163,7 +163,7 @@ Content-Type: application/json
 
 ---
 
-### 4.2 GET /dishes - 料理一覧取得
+### 4.2 GET /api/dishes - 料理一覧取得
 
 #### リクエスト
 
@@ -321,7 +321,7 @@ LIMIT 21;
 
 ---
 
-### 4.3 GET /dishes/{id} - 料理詳細取得
+### 4.3 GET /api/dishes/{id} - 料理詳細取得
 
 #### リクエスト
 
@@ -375,7 +375,7 @@ Authorization: Bearer <access_token>
 
 ---
 
-### 4.4 PUT /dishes/{id} - 料理更新
+### 4.4 PUT /api/dishes/{id} - 料理更新
 
 #### リクエスト
 
@@ -433,7 +433,7 @@ Content-Type: application/json
 
 **成功: 200 OK**
 
-POST /dishes と同じ形式
+POST /api/dishes と同じ形式
 
 #### S3画像更新フロー（差分更新方式）
 
@@ -485,7 +485,7 @@ POST /dishes と同じ形式
 
 ---
 
-### 4.5 DELETE /dishes/{id} - 料理削除
+### 4.5 DELETE /api/dishes/{id} - 料理削除
 
 #### リクエスト
 

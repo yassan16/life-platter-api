@@ -1,11 +1,9 @@
 import os
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
-# 各機能（features）で作ったルーターを読み込む
-# ※名前が被らないように "as" で別名を付けるのがコツです
-from app.features.users.router import router as users_router
-from app.features.dishes.router import router as dishes_router
 from sqlalchemy import create_engine, text
+
+from app.api import api_router
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
@@ -35,11 +33,10 @@ def rate_limit_exceeded_handler(request: Request, exc: RateLimitExceeded):
 DATABASE_URL = os.getenv("DATABASE_URL")
 
 # --- ルーターの統合 ---
-# ユーザー機能: http://localhost/users/xxxxx
-app.include_router(users_router)
-
-# 料理CRUD機能: http://localhost/dishes/xxxxx
-app.include_router(dishes_router)
+# 全ての機能は /api プレフィックス配下に配置
+# http://localhost/api/users/xxxxx
+# http://localhost/api/dishes/xxxxx
+app.include_router(api_router, prefix="/api")
 
 # ルートパスへのアクセス (Hello World)
 @app.get("/")

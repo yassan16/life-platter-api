@@ -30,7 +30,7 @@ router = APIRouter()
 limiter = Limiter(key_func=get_remote_address)
 
 
-@router.post("/users/register", response_model=TokenResponse, tags=["Users"])
+@router.post("/register", response_model=TokenResponse)
 @limiter.limit(settings.rate_limit_auth)
 def register(
     request: Request,
@@ -52,7 +52,7 @@ def register(
         )
 
 
-@router.post("/users/login", response_model=TokenResponse, tags=["Users"])
+@router.post("/login", response_model=TokenResponse)
 @limiter.limit(settings.rate_limit_auth)
 def login(
     request: Request,
@@ -83,7 +83,7 @@ def login(
         )
 
 
-@router.post("/users/refresh", response_model=TokenResponse, tags=["Users"])
+@router.post("/refresh", response_model=TokenResponse)
 @limiter.limit(settings.rate_limit_auth)
 def refresh(
     request: Request,
@@ -114,7 +114,7 @@ def refresh(
         )
 
 
-@router.post("/users/logout", response_model=MessageResponse, tags=["Users"])
+@router.post("/logout", response_model=MessageResponse)
 def logout(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
@@ -125,7 +125,7 @@ def logout(
     return MessageResponse(message="ログアウトしました")
 
 
-@router.get("/users/me", response_model=UserResponse, tags=["Users"])
+@router.get("/me", response_model=UserResponse)
 def get_me(current_user: User = Depends(get_current_user)):
     """現在のユーザー情報"""
     return UserResponse(

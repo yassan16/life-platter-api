@@ -22,17 +22,17 @@ JWT + OAuth2 Password Flow によるログイン処理を実装する。
 
 | メソッド | パス | 説明 | 認証 | レート制限 |
 |---------|------|------|:----:|:---------:|
-| POST | `/users/register` | ユーザー登録 | 不要 | あり |
-| POST | `/users/login` | ログイン | 不要 | あり |
-| POST | `/users/refresh` | トークン更新 | 不要 | あり |
-| POST | `/users/logout` | ログアウト | 必要 | なし |
-| GET | `/users/me` | 現在のユーザー情報 | 必要 | なし |
+| POST | `/api/users/register` | ユーザー登録 | 不要 | あり |
+| POST | `/api/users/login` | ログイン | 不要 | あり |
+| POST | `/api/users/refresh` | トークン更新 | 不要 | あり |
+| POST | `/api/users/logout` | ログアウト | 必要 | なし |
+| GET | `/api/users/me` | 現在のユーザー情報 | 必要 | なし |
 
 ---
 
 ## リクエスト・レスポンス仕様
 
-### POST /users/login
+### POST /api/users/login
 
 **リクエスト**
 ```json
@@ -71,7 +71,7 @@ JWT + OAuth2 Password Flow によるログイン処理を実装する。
 
 ---
 
-### POST /users/refresh
+### POST /api/users/refresh
 
 **リクエスト**
 ```json
@@ -100,7 +100,7 @@ JWT + OAuth2 Password Flow によるログイン処理を実装する。
 
 ---
 
-### POST /users/logout
+### POST /api/users/logout
 
 **ヘッダー**
 ```
@@ -116,7 +116,7 @@ Authorization: Bearer <access_token>
 
 ---
 
-### GET /users/me
+### GET /api/users/me
 
 **ヘッダー**
 ```
