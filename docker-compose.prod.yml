@@ -2,8 +2,12 @@
 # 使用方法: docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
 services:
   db:
+    restart: always
     env_file:
       - .env.production
+
+  nginx:
+    restart: always
 
   app:
     restart: always
