@@ -17,10 +17,12 @@ docs/
 │   └── migration-guide.md
 ├── features/                 # 機能別仕様
 │   ├── auth/
-│   │   ├── spec.md
+│   │   ├── requirements.md    # 要件定義（Why/What）
+│   │   ├── design.md
 │   │   └── token-guide.md
 │   └── dish/
-│       ├── api-spec.md
+│       ├── requirements.md    # 要件定義（Why/What）
+│       ├── design.md
 │       ├── db-design.md
 │       └── s3-image-upload.md
 └── setup/                    # 環境構築・運用
@@ -36,16 +38,29 @@ docs/
   - 機能モジュールの責務
 
 ### 機能仕様 (`docs/features/`)
-- 認証機能: [features/auth.md](features/auth.md)
-  - JWT + OAuth2 Password Flow
-  - ログイン・ログアウト・トークン更新
-  - リフレッシュトークン管理
-  - レート制限
-- 料理機能: [features/dish/](features/dish/)
+
+機能ごとに **要件定義層（requirements.md）** と **設計層（design.md）** の2層構成で管理しています。
+
+| 層 | ファイル | 内容 |
+|----|----------|------|
+| 要件定義 | `requirements.md` | Why（目的）/ What（仕様）/ ユーザーストーリー |
+| 設計 | `design.md` | 実装レベルの技術仕様・アーキテクチャ |
+
+- 認証機能:
+  - 要件定義: [features/auth/requirements.md](features/auth/requirements.md)
+    - ユーザーストーリー、機能要件、非機能要件
+  - 設計: [features/auth/design.md](features/auth/design.md)
+    - JWT + OAuth2 Password Flow
+    - ログイン・ログアウト・トークン更新
+    - リフレッシュトークン管理
+    - レート制限
+- 料理機能:
+  - 要件定義: [features/dish/requirements.md](features/dish/requirements.md)
+    - ユーザーストーリー、機能要件、非機能要件
   - DB設計: [db-design.md](features/dish/db-design.md)
     - dishes, dish_images, dish_categories テーブル設計
     - 削除・更新ポリシー（dishesは論理削除、dish_imagesは物理削除）
-  - API仕様: [api-spec.md](features/dish/api-spec.md)
+  - 設計: [design.md](features/dish/design.md)
     - CRUD API（POST/GET/PUT/DELETE /dishes）
     - 画像の差分更新方式（images_to_add / images_to_delete）
     - カーソルベースページネーション

@@ -1,4 +1,40 @@
-# 料理（Dish）CRUD API 仕様書
+# 料理（Dish）CRUD API 設計書
+
+> 要件定義（Why/What）は [requirements.md](requirements.md) を参照。
+> 本ドキュメントは実装レベルの技術仕様を記載しています。
+
+## 目次
+
+- [1. 概要](#1-概要)
+- [2. アーキテクチャ概要](#2-アーキテクチャ概要)
+- [3. 技術選定](#3-技術選定)
+- [4. コンポーネント設計](#4-コンポーネント設計)
+- [5. データフロー](#5-データフロー)
+  - [5.1 料理登録フロー（S3含む）](#51-料理登録フローs3含む)
+  - [5.2 料理一覧取得フロー](#52-料理一覧取得フロー)
+- [6. 共通仕様](#6-共通仕様)
+  - [認証](#認証)
+  - [アクセス制御](#アクセス制御)
+  - [ベースパス](#ベースパス)
+- [7. エンドポイント一覧](#7-エンドポイント一覧)
+- [8. 各エンドポイント詳細](#8-各エンドポイント詳細)
+  - [8.1 POST /api/dishes - 料理登録](#81-post-apidishes---料理登録)
+  - [8.2 GET /api/dishes - 料理一覧取得](#82-get-apidishes---料理一覧取得)
+  - [8.3 GET /api/dishes/{id} - 料理詳細取得](#83-get-apidishesid---料理詳細取得)
+  - [8.4 PUT /api/dishes/{id} - 料理更新](#84-put-apidishesid---料理更新)
+  - [8.5 DELETE /api/dishes/{id} - 料理削除](#85-delete-apidishesid---料理削除)
+- [9. エラーハンドリング方針](#9-エラーハンドリング方針)
+- [10. error_code 一覧](#10-error_code-一覧)
+- [11. Pydanticスキーマ設計](#11-pydanticスキーマ設計)
+  - [リクエストスキーマ](#リクエストスキーマ)
+  - [レスポンススキーマ](#レスポンススキーマ)
+- [12. カーソルのエンコード・デコード](#12-カーソルのエンコードデコード)
+- [13. テスト戦略](#13-テスト戦略)
+- [14. 制約事項](#14-制約事項)
+- [15. 実装ファイル構成](#15-実装ファイル構成)
+- [Gate2 チェックリスト](#gate2-チェックリスト)
+
+---
 
 ## 1. 概要
 
@@ -6,7 +42,147 @@
 
 ---
 
-## 2. 共通仕様
+## 2. アーキテクチャ概要
+
+```mermaid
+graph LR
+  Client -->|CRUD| Router
+  Router --> Service
+  Service --> Repository
+  Service --> S3Service["s3_service.py\nS3操作"]
+  Repository --> DB[("MySQL\ndishes\ndish_images")]
+  S3Service --> S3[("S3\n画像ストレージ")]
+```
+
+---
+
+## 3. 技術選定
+
+| 技術・方式 | 選定理由 | 不採用の代替案 |
+|-----------|---------|--------------|
+| カーソルベースページネーション | 大量データでも安定したパフォーマンス。途中に追加・削除があっても重複・欠落が発生しない | オフセット方式（`LIMIT/OFFSET`）: 件数が増えるほど遅くなり、ページ間でデータがズレる |
+| 差分更新方式（PUT） | 変更しない画像を再送不要。ネットワーク効率が高く、意図しない画像削除を防ぐ | 全置換方式: 未変更の画像も含めて毎回全件送信が必要で、通信量・S3操作が増大 |
+| 論理削除 | 削除後も復元可能。監査ログとして機能する | 物理削除: 復元不可能で、参照整合性エラーのリスクがある |
+| S3操作をDBトランザクション外で先行実行 | DBが参照するファイルが存在しないという致命的な不整合を防ぐ | トランザクション内での一括処理: S3はACIDに非対応のためロールバック不可 |
+
+---
+
+## 4. コンポーネント設計
+
+### 責務一覧
+
+| ファイル | 責務 |
+|---------|------|
+| `router.py` | エンドポイント定義、リクエスト受け取り、レスポンス返却 |
+| `service.py` | ビジネスロジック（バリデーション、S3操作とDB操作の制御） |
+| `repository.py` | DB操作の抽象化（Dish/DishImageのCRUD） |
+| `s3_service.py` | S3操作（画像の存在確認、一時領域→正式パスへのコピー、削除） |
+| `schemas.py` | リクエスト/レスポンスのPydanticモデル定義 |
+| `models.py` | SQLAlchemyモデル（Dish, DishImage, DishCategory） |
+| `exceptions.py` | 機能固有の例外クラス定義 |
+
+### 依存方向
+
+```
+router.py → service.py → repository.py → DB
+                       → s3_service.py → S3
+```
+
+---
+
+## 5. データフロー
+
+### 5.1 料理登録フロー（S3含む）
+
+```mermaid
+sequenceDiagram
+  participant C as Client
+  participant R as Router
+  participant S as Service
+  participant S3 as s3_service.py
+  participant Repo as Repository
+  participant DB as MySQL
+  participant Bucket as S3
+
+  C->>R: POST /api/dishes {name, cooked_at, images}
+  R->>S: create_dish(user_id, request)
+
+  note over S: Step 1: バリデーション
+  S->>S: 画像数チェック（≤3）
+  S->>S: display_order 重複・範囲チェック
+  alt バリデーション失敗
+    S-->>R: raise ValidationError
+    R-->>C: 400 VALIDATION_ERROR
+  end
+
+  note over S: Step 2: S3操作（トランザクション外）
+  S->>S3: check_object_exists(temp_key)
+  S3->>Bucket: HEAD Object
+  Bucket-->>S3: 存在有無
+  alt S3オブジェクト不在
+    S3-->>S: raise S3ObjectNotFoundError
+    S-->>R: raise S3ObjectNotFoundError
+    R-->>C: 422 S3_OBJECT_NOT_FOUND
+  end
+  S->>S3: copy_to_permanent(temp_key, permanent_key)
+  S3->>Bucket: CopyObject
+  Bucket-->>S3: OK
+
+  note over S: Step 3: DBトランザクション
+  S->>Repo: create_dish(dish_data, images_data)
+  Repo->>DB: BEGIN
+  Repo->>DB: INSERT INTO dishes
+  Repo->>DB: INSERT INTO dish_images
+  Repo->>DB: COMMIT
+  DB-->>Repo: OK
+  Repo-->>S: Dish
+
+  note over S: Step 4: 後処理（ベストエフォート）
+  S->>S3: delete_temp_objects(temp_keys)
+
+  S-->>R: Dish
+  R-->>C: 201 Created {dish}
+```
+
+### 5.2 料理一覧取得フロー
+
+```mermaid
+sequenceDiagram
+  participant C as Client
+  participant R as Router
+  participant S as Service
+  participant Repo as Repository
+  participant DB as MySQL
+
+  C->>R: GET /api/dishes?cursor=xxx&limit=20
+  R->>S: list_dishes(user_id, cursor, limit, filters)
+
+  alt カーソルあり
+    S->>S: decode_cursor(cursor)
+    alt カーソルが不正
+      S-->>R: raise InvalidCursorError
+      R-->>C: 400 INVALID_CURSOR
+    end
+  end
+
+  S->>Repo: get_dishes(user_id, cursor_data, limit+1, filters)
+  Repo->>DB: SELECT dishes.*, thumbnail_subquery, count_subquery\nWHERE user_id = ? AND deleted_at IS NULL\nORDER BY cooked_at DESC, id DESC\nLIMIT limit+1
+  DB-->>Repo: rows
+  Repo-->>S: dishes
+
+  S->>S: has_next = len(dishes) > limit
+  alt has_next
+    S->>S: next_cursor = encode_cursor(dishes[limit-1])
+    S->>S: dishes = dishes[:limit]
+  end
+
+  S-->>R: {items, next_cursor, has_next}
+  R-->>C: 200 OK {items, next_cursor, has_next}
+```
+
+---
+
+## 6. 共通仕様
 
 ### 認証
 
@@ -29,7 +205,7 @@ Authorization: Bearer <access_token>
 
 ---
 
-## 3. エンドポイント一覧
+## 7. エンドポイント一覧
 
 | メソッド | パス | 説明 | 認証 |
 |---------|------|------|:----:|
@@ -41,9 +217,9 @@ Authorization: Bearer <access_token>
 
 ---
 
-## 4. 各エンドポイント詳細
+## 8. 各エンドポイント詳細
 
-### 4.1 POST /api/dishes - 料理登録
+### 8.1 POST /api/dishes - 料理登録
 
 #### リクエスト
 
@@ -163,7 +339,7 @@ Content-Type: application/json
 
 ---
 
-### 4.2 GET /api/dishes - 料理一覧取得
+### 8.2 GET /api/dishes - 料理一覧取得
 
 #### リクエスト
 
@@ -321,7 +497,7 @@ LIMIT 21;
 
 ---
 
-### 4.3 GET /api/dishes/{id} - 料理詳細取得
+### 8.3 GET /api/dishes/{id} - 料理詳細取得
 
 #### リクエスト
 
@@ -375,7 +551,7 @@ Authorization: Bearer <access_token>
 
 ---
 
-### 4.4 PUT /api/dishes/{id} - 料理更新
+### 8.4 PUT /api/dishes/{id} - 料理更新
 
 #### リクエスト
 
@@ -485,7 +661,7 @@ POST /api/dishes と同じ形式
 
 ---
 
-### 4.5 DELETE /api/dishes/{id} - 料理削除
+### 8.5 DELETE /api/dishes/{id} - 料理削除
 
 #### リクエスト
 
@@ -525,7 +701,33 @@ Authorization: Bearer <access_token>
 
 ---
 
-## 5. error_code 一覧
+## 9. エラーハンドリング方針
+
+### エラー分類と処理方針
+
+| 発生源 | HTTPステータス | 方針 |
+|--------|:-------------:|------|
+| リクエストバリデーション失敗 | 400 | Pydanticが検出した時点で即返却。DBもS3も操作しない |
+| 認証トークン無効 | 401 | FastAPIのOAuth2PasswordBearerが自動処理 |
+| 他ユーザーリソースへのアクセス | 403 | DB照合後に検出。S3操作は行わない |
+| リソース未存在 | 404 | DB照合後に検出 |
+| S3オブジェクト未存在 | 422 | バリデーション通過後、S3操作前に確認 |
+| S3操作エラー | 500 | DBトランザクション開始前に発生するためDB状態は安全 |
+| DBエラー | 500 | トランザクションをROLLBACK。S3にコピー済みの場合は孤立ファイルが発生（定期バッチで回収） |
+
+### エラーレスポンス共通フォーマット
+
+```json
+{
+  "error_code": "ERROR_CODE_STRING",
+  "message": "ユーザー向けの説明（日本語）",
+  "details": null
+}
+```
+
+---
+
+## 10. error_code 一覧
 
 | error_code | 説明 | HTTPステータス |
 |------------|------|:-------------:|
@@ -543,7 +745,7 @@ Authorization: Bearer <access_token>
 
 ---
 
-## 6. Pydanticスキーマ設計
+## 11. Pydanticスキーマ設計
 
 ### リクエストスキーマ
 
@@ -617,7 +819,7 @@ class DishListResponse(BaseModel):
 
 ---
 
-## 7. カーソルのエンコード・デコード
+## 12. カーソルのエンコード・デコード
 
 ```python
 import base64
@@ -645,7 +847,58 @@ def decode_cursor(cursor: str) -> tuple[date, str]:
 
 ---
 
-## 8. 実装ファイル構成
+## 13. テスト戦略
+
+### ユニットテスト（`service.py`）
+
+| テスト対象 | 正常系 | 異常系 |
+|-----------|--------|--------|
+| バリデーション（画像数） | 3枚以内で通過 | 4枚でエラー |
+| バリデーション（display_order） | 重複なし・範囲内で通過 | 重複・範囲外でエラー |
+| カーソルエンコード・デコード | 正常なカーソル生成・復元 | 不正文字列でInvalidCursorError |
+| 差分更新バリデーション | 削除後+追加後で3枚以内 | 更新後4枚でエラー |
+
+### 統合テスト（各エンドポイント）
+
+| エンドポイント | 正常系 | 異常系 |
+|--------------|--------|--------|
+| POST /dishes | 201 + 料理データ返却 | 400（バリデーション）、422（S3未存在） |
+| GET /dishes | 200 + ページネーション | 400（不正カーソル） |
+| GET /dishes/{id} | 200 + 料理詳細 | 403（他ユーザー）、404（未存在） |
+| PUT /dishes/{id} | 200 + 更新後データ | 400（画像超過）、403、404 |
+| DELETE /dishes/{id} | 200 | 403（他ユーザー）、404（未存在） |
+
+### S3モック方針
+
+- 統合テストではS3操作を `unittest.mock.patch` でモック化
+- S3クライアントをDIして差し替え可能な設計にする
+- S3エラーシナリオ（オブジェクト未存在、アクセス拒否）も個別にテスト
+
+---
+
+## 14. 制約事項
+
+### パフォーマンス制約
+
+- 一覧取得の上限: `limit`パラメータ最大 **100件**
+- 画像の上限: 料理あたり最大 **3枚**
+- カーソルによるページネーションを必須とし、全件取得APIは提供しない
+
+### セキュリティ制約
+
+- 他ユーザーの料理へのアクセスはすべて 403 で拒否
+- S3の一時キー（`images/dishes/temp/`）は署名なしでは参照不可にする
+- `deleted_at` が非NULLの料理は検索・参照から除外（論理削除の徹底）
+
+### データ整合性
+
+- **許容する不整合**: S3にコピー済みファイルがDB登録前に孤立する場合（500エラー発生時）
+- **回収方針**: 定期バッチがS3内のファイルとDB上のレコードを照合し、孤立ファイルを削除
+- **許容しない不整合**: DBが参照しているS3ファイルが存在しない状態（S3操作をトランザクション外で先行実行することで防止）
+
+---
+
+## 15. 実装ファイル構成
 
 ```
 app/features/dishes/
@@ -658,3 +911,20 @@ app/features/dishes/
 ├── exceptions.py       # 機能固有例外
 └── s3_service.py       # S3操作（画像アップロード・削除）
 ```
+
+---
+
+## Gate2 チェックリスト
+
+- [ ] アーキテクチャ概要図（Mermaid）が記載されている
+- [ ] 技術選定に選定理由と不採用代替案が記載されている
+- [ ] 全コンポーネントの責務と依存方向が明記されている
+- [ ] 料理登録（S3含む）と一覧取得のsequenceDiagramが記載されている
+- [ ] 全エンドポイントのリクエスト/レスポンス例（JSON）が記載されている
+- [ ] エラーハンドリング方針（S3エラー vs DBエラーの違い）が定義されている
+- [ ] error_code一覧が完全に記載されている
+- [ ] Pydanticスキーマ設計が記載されている
+- [ ] カーソルのエンコード・デコード実装が記載されている
+- [ ] テスト戦略（ユニット・統合・S3モック方針）が記載されている
+- [ ] パフォーマンス・セキュリティ・データ整合性の制約が明記されている
+- [ ] requirements.md へのリンクが設置されている
