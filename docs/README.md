@@ -8,98 +8,66 @@
 
 ```
 docs/
-├── README.md                 # 本ファイル（ドキュメント構成の説明）
-├── project-structure.md      # プロジェクト全体の構成
-├── api/                      # API共通仕様
-│   ├── endpoints.md
-│   └── error-handling.md
-├── database/                 # データベース関連
-│   └── migration-guide.md
-├── features/                 # 機能別仕様
+├── README.md                      # 本ファイル
+├── architecture/
+│   └── system-overview.md         # システム構成・Docker起動フロー
+├── api/
+│   └── error-handling.md          # エラーレスポンス共通仕様
+├── features/
 │   ├── auth/
-│   │   ├── requirements.md    # 要件定義（Why/What）
-│   │   ├── design.md
-│   │   └── token-guide.md
+│   │   ├── requirements.md        # 要件定義（Why/What）
+│   │   ├── design.md              # 実装仕様・トークン仕様
+│   │   ├── db-design.md           # refresh_tokens テーブル設計
+│   │   └── token-guide.md         # 学習用：JWTの仕組み・2トークン方式の詳細解説
 │   └── dish/
-│       ├── requirements.md    # 要件定義（Why/What）
-│       ├── design.md
-│       ├── db-design.md
-│       └── s3-image-upload.md
-└── setup/                    # 環境構築・運用
-    ├── commands.md
-    ├── docker-compose-startup-flow.md
-    └── environment-variables.md
+│       ├── requirements.md        # 要件定義（Why/What）
+│       ├── design.md              # 実装仕様
+│       ├── db-design.md           # dishes/dish_images テーブル設計
+│       └── s3-image-upload.md     # S3 Pre-signed URL・CloudFront
+└── setup/
+    ├── commands.md                # Dockerコマンド・Alembic操作
+    ├── migration-guide.md         # Alembicセットアップ詳細手順
+    └── environment-variables.md   # 環境変数設定ガイド
 ```
 
 ## 各フォルダの概要
-### プロジェクト構成 (`docs/`)
-- プロジェクト構成: [project-structure.md](project-structure.md)
-  - ディレクトリ構造
-  - 機能モジュールの責務
+
+### アーキテクチャ (`docs/architecture/`)
+
+- [architecture/system-overview.md](architecture/system-overview.md)
+  - データベース接続フロー
+  - リクエストフロー (Nginx → FastAPI → MySQL)
+  - Docker 起動順序とシーケンス図
 
 ### 機能仕様 (`docs/features/`)
 
-機能ごとに **要件定義層（requirements.md）** と **設計層（design.md）** の2層構成で管理しています。
+機能ごとに **要件定義層（requirements.md）** と **設計層（design.md）** の2層構成で管理。DB設計がある場合は **db-design.md** を追加。
 
 | 層 | ファイル | 内容 |
 |----|----------|------|
 | 要件定義 | `requirements.md` | Why（目的）/ What（仕様）/ ユーザーストーリー |
 | 設計 | `design.md` | 実装レベルの技術仕様・アーキテクチャ |
+| DB設計 | `db-design.md` | テーブル定義・インデックス・削除ポリシー |
 
 - 認証機能:
   - 要件定義: [features/auth/requirements.md](features/auth/requirements.md)
-    - ユーザーストーリー、機能要件、非機能要件
-  - 設計: [features/auth/design.md](features/auth/design.md)
-    - JWT + OAuth2 Password Flow
-    - ログイン・ログアウト・トークン更新
-    - リフレッシュトークン管理
-    - レート制限
+  - 設計: [features/auth/design.md](features/auth/design.md)（JWT + OAuth2 Password Flow、トークン仕様）
+  - DB設計: [features/auth/db-design.md](features/auth/db-design.md)（refresh_tokens テーブル）
+  - 学習用リファレンス: [features/auth/token-guide.md](features/auth/token-guide.md)（JWTの仕組み、2トークン方式の詳細解説）
 - 料理機能:
   - 要件定義: [features/dish/requirements.md](features/dish/requirements.md)
-    - ユーザーストーリー、機能要件、非機能要件
-  - DB設計: [db-design.md](features/dish/db-design.md)
-    - dishes, dish_images, dish_categories テーブル設計
-    - 削除・更新ポリシー（dishesは論理削除、dish_imagesは物理削除）
-  - 設計: [design.md](features/dish/design.md)
-    - CRUD API（POST/GET/PUT/DELETE /dishes）
-    - 画像の差分更新方式（images_to_add / images_to_delete）
-    - カーソルベースページネーション
-    - S3・DB連携のトランザクション管理
-  - S3画像アップロード: [s3-image-upload.md](features/dish/s3-image-upload.md)
-    - Pre-signed URL方式
-    - セキュリティ要件（IAM、CORS、ライフサイクル）
-    - 障害パターンとリカバリ（孤立ファイル削除バッチ）
-    - CloudFront経由の画像配信
+  - 設計: [features/dish/design.md](features/dish/design.md)（CRUD API、画像差分更新、ページネーション）
+  - DB設計: [features/dish/db-design.md](features/dish/db-design.md)（dishes/dish_images テーブル）
+  - S3画像アップロード: [features/dish/s3-image-upload.md](features/dish/s3-image-upload.md)
 
 ### API共通仕様 (`docs/api/`)
-- エンドポイント仕様: [api/endpoints.md](api/endpoints.md)
-  - 実装済みエンドポイント一覧
-  - URL設計パターン
-  - 今後実装予定のエンドポイント
+
 - エラーレスポンス仕様: [api/error-handling.md](api/error-handling.md)
   - 統一エラーレスポンス型 (error_code, message, details)
   - レスポンス例
 
 ### 環境構築・運用 (`docs/setup/`)
-- 基本コマンド一覧: [setup/commands.md](setup/commands.md)
-  - Docker操作（起動・停止・ログ確認）
-  - API動作確認（Swagger UI、DB接続テスト）
-  - マイグレーション操作（Alembic）
-  - データベース直接操作
-- Docker起動フロー・アーキテクチャ詳細: [setup/docker-compose-startup-flow.md](setup/docker-compose-startup-flow.md)
-  - データベース接続フロー
-  - リクエストフロー (Nginx → FastAPI → MySQL)
-  - Docker起動順序とシーケンス図
-- 環境変数設定ガイド: [setup/environment-variables.md](setup/environment-variables.md)
-  - pydantic-settingsによる型安全な環境変数管理
-  - 全環境変数の詳細説明（Database、JWT、AWS/S3など）
-  - 環境別設定例（ローカル開発・本番）
-  - セキュリティガイドライン（JWT_SECRET_KEY生成、ファイル権限）
-  - トラブルシューティング
 
-### データベース (`docs/database/`)
-- Alembicマイグレーションセットアップ: [database/migration-guide.md](database/migration-guide.md)
-  - パッケージインストールから初期化まで
-  - env.py・database.pyの非同期対応設定
-  - モデル作成とマイグレーション実行フロー
-  - トラブルシューティング
+- 基本コマンド一覧: [setup/commands.md](setup/commands.md)
+- Alembicマイグレーションセットアップ: [setup/migration-guide.md](setup/migration-guide.md)
+- 環境変数設定ガイド: [setup/environment-variables.md](setup/environment-variables.md)

@@ -14,11 +14,13 @@ life_platter-api
 ## HOW（開発ガイドライン）
 
 ### コマンド
-基本的な操作コマンドは `docs/setup/commands.md` を参照。
+
+@docs/setup/commands.md
 
 ### エンドポイント追加
 - 機能ごとに `app/features/` 配下に配置
-- ルーター登録は `app/main.py` で `app.include_router()` を使用
+- 全エンドポイントは `/api` プレフィックス配下に配置（例: `/api/users/`, `/api/dishes/`）
+- ルーター登録は `app/api/__init__.py` で `include_router()` を使用し、`app/main.py` で統合ルーターをマウント
 
 ### データベース
 - 接続は `app/core/deps.py` の依存性注入を使用
@@ -31,16 +33,3 @@ life_platter-api
 
 ### ドキュメント
 - Mermaidでフローチャートやシーケンス図を活用
-
-## 詳細ドキュメント
-詳細は `docs/README.md` を参照。
-
-## 機能モジュールの責務
-| ファイル        | 責務                                             |
-| --------------- | ------------------------------------------------ |
-| `schemas.py`    | リクエスト/レスポンスのバリデーション (Pydantic) |
-| `models.py`     | テーブル定義 (SQLAlchemy)                        |
-| `repository.py` | DB操作の抽象化                                   |
-| `service.py`    | ビジネスロジック                                 |
-| `router.py`     | APIエンドポイント定義                            |
-| `exceptions.py` | 機能固有の例外                                   |
