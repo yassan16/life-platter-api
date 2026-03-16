@@ -23,6 +23,7 @@
   - [8.3 GET /api/dishes/{id} - 料理詳細取得](#83-get-apidishesid---料理詳細取得)
   - [8.4 PUT /api/dishes/{id} - 料理更新](#84-put-apidishesid---料理更新)
   - [8.5 DELETE /api/dishes/{id} - 料理削除](#85-delete-apidishesid---料理削除)
+  - [8.6 POST /api/dishes/images/presigned-url - Pre-signed URL取得](#86-post-apidishesimagespresigned-url---pre-signed-url取得)
 - [9. エラーハンドリング方針](#9-エラーハンドリング方針)
 - [10. error_code 一覧](#10-error_code-一覧)
 - [11. Pydanticスキーマ設計](#11-pydanticスキーマ設計)
@@ -214,6 +215,7 @@ Authorization: Bearer <access_token>
 | GET | `/api/dishes/{id}` | 料理詳細取得 | 必要 |
 | PUT | `/api/dishes/{id}` | 料理更新 | 必要 |
 | DELETE | `/api/dishes/{id}` | 料理削除（論理削除） | 必要 |
+| POST | `/api/dishes/images/presigned-url` | 画像アップロード用Pre-signed URL取得 | 必要 |
 
 ---
 
@@ -699,6 +701,56 @@ Authorization: Bearer <access_token>
 | 403 | `PERMISSION_DENIED` | 他ユーザーの料理を削除 |
 | 404 | `DISH_NOT_FOUND` | 料理が存在しないまたは既に削除済み |
 
+### 8.6 POST /api/dishes/images/presigned-url - Pre-signed URL取得
+
+> 詳細仕様・アップロードフロー・障害パターンは [s3-image-upload.md](s3-image-upload.md) を参照。
+
+#### リクエスト
+
+**ヘッダー**
+```
+Authorization: Bearer <access_token>
+Content-Type: application/json
+```
+
+**ボディ**
+```json
+{
+  "content_type": "image/jpeg",
+  "file_size": 1048576
+}
+```
+
+| フィールド | 型 | 必須 | 制約 | 説明 |
+|-----------|------|:----:|------|------|
+| content_type | string | Yes | image/jpeg, image/png, image/webp | MIMEタイプ |
+| file_size | integer | Yes | 1〜10485760（10MB） | ファイルサイズ（バイト） |
+
+#### レスポンス
+
+**成功: 200 OK**
+```json
+{
+  "upload_url": "https://bucket.s3.ap-northeast-1.amazonaws.com/images/dishes/temp/...",
+  "image_key": "images/dishes/temp/550e8400-e29b-41d4-a716-446655440000.jpg",
+  "expires_in": 300
+}
+```
+
+| フィールド | 型 | 説明 |
+|-----------|------|------|
+| upload_url | string | S3アップロード用署名付きURL |
+| image_key | string | 料理登録・更新時に `image_key` として使用するキー |
+| expires_in | integer | URL有効期限（秒）。デフォルト300秒 |
+
+#### エラーレスポンス
+
+| HTTPステータス | error_code | 条件 |
+|:-------------:|------------|------|
+| 400 | `INVALID_CONTENT_TYPE` | 許可されていないMIMEタイプ |
+| 400 | `FILE_SIZE_EXCEEDED` | ファイルサイズが上限（10MB）超過 |
+| 401 | `INVALID_TOKEN` | トークンが無効または期限切れ |
+
 ---
 
 ## 9. エラーハンドリング方針
@@ -742,6 +794,8 @@ Authorization: Bearer <access_token>
 | `IMAGE_NOT_FOUND` | 削除対象の画像IDが存在しない | 404 |
 | `CATEGORY_NOT_FOUND` | カテゴリが存在しないまたは削除済み | 422 |
 | `S3_OBJECT_NOT_FOUND` | 追加画像のS3オブジェクトが存在しない | 422 |
+| `INVALID_CONTENT_TYPE` | 許可されていないMIMEタイプ | 400 |
+| `FILE_SIZE_EXCEEDED` | ファイルサイズが上限（10MB）超過 | 400 |
 
 ---
 
